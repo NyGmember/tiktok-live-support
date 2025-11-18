@@ -1,9 +1,9 @@
 fastapi
-uvicorn[standard]
-TikTokLive>=6.0.0  # ตรวจสอบ version ล่าสุดอีกที
+uvicorn
+TikTokLive
 redis
 sqlalchemy
-asyncpg            # Driver Postgres แบบ Async ที่เร็วที่สุด
-psycopg2-binary    # Driver Postgres แบบ Sync (สำหรับ test script)
+asyncpg
+psycopg2-binary
 pydantic-settings
 python-dotenv
