@@ -11,6 +11,10 @@ class MockLiveAdapter:
     def __init__(self, scoring_service: ScoringService, mock_file_path: str):
         self.service = scoring_service
         self.file_path = mock_file_path
+        self.is_scoring_active = True 
+        
+    def set_scoring(self, active: bool):
+        self.is_scoring_active = active
 
     async def simulate_from_file(self, speed_multiplier: float = 1.0):
         """
@@ -26,6 +30,10 @@ class MockLiveAdapter:
                 for line in f:
                     if not line.strip():
                         continue
+                    
+                    # ก่อนเรียก self.service.process_xxx
+                    if not self.is_scoring_active:
+                        continue # ข้าม Event นี้ไปเลยถ้าปิดรับคะแนนอยู่
                         
                     try:
                         event = json.loads(line)
