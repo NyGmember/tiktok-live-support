@@ -60,7 +60,7 @@ class TikTokLiveAdapter:
             
             self.scoring_service.process_like(event.user.unique_id, event.user.nickname, event.count, is_follower)
         except Exception as e:
-            print(f"Error processing like: {e}")
+            asyncio.create_task(self.logging_service.error(f"Error processing like: {e}", e))
 
     async def on_gift(self, event: GiftEvent):
         try:
@@ -85,13 +85,13 @@ class TikTokLiveAdapter:
                     1
                 )
         except Exception as e:
-            print(f"Error processing gift: {e}")
+            asyncio.create_task(self.logging_service.error(f"Error processing gift: {e}", e))
 
     async def on_comment(self, event: CommentEvent):
         try:
             self.scoring_service.process_comment(event.user.unique_id, event.comment)
         except Exception as e:
-            print(f"Error processing comment: {e}")
+            asyncio.create_task(self.logging_service.error(f"Error processing comment: {e}", e))
 
     async def on_follow(self, event: FollowEvent):
         # Optional: Give points for follow?
