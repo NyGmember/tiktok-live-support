@@ -1,25 +1,27 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
 export const useGameStore = defineStore('game', () => {
     // State
-    const isConnected = ref(false)
-    const isScoringActive = ref(false)
+    const connectionStatus = ref('disconnected') // 'connected', 'disconnected'
+    const isPaused = ref(false)
     const currentSessionId = ref('')
     const targetTiktokId = ref('')
     const leaderboard = ref([])
+    const currentQuestion = ref(null)
     const logs = ref([])
     const ws = ref(null)
+    const isLoading = ref(false)
 
     // Actions
     async function fetchStatus() {
         try {
             const res = await fetch('http://localhost:8000/status')
             const data = await res.json()
-            isConnected.value = data.is_connected
-            isScoringActive.value = data.is_scoring_active
-            currentSessionId.value = data.current_session_id
-            targetTiktokId.value = data.target_tiktok_id
+            connectionStatus.value = data.is_connected ? 'connected' : 'disconnected'
+            isPaused.value = data.is_paused
+            currentSessionId.value = data.session_id
+            targetTiktokId.value = data.target_id
         } catch (e) {
             console.error('Failed to fetch status:', e)
             addLog('ERROR', `Failed to fetch status: ${e.message}`)
@@ -29,7 +31,7 @@ export const useGameStore = defineStore('game', () => {
     function connectWebSocket() {
         if (ws.value) return
 
-        ws.value = new WebSocket('ws://localhost:8000/ws/leaderboard')
+        ws.value = new WebSocket('ws://localhost:8000/ws')
 
         ws.value.onopen = () => {
             addLog('INFO', 'WebSocket connected')
@@ -38,7 +40,18 @@ export const useGameStore = defineStore('game', () => {
         ws.value.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data)
-                leaderboard.value = data
+                if (data.leaderboard) leaderboard.value = data.leaderboard
+                if (data.question !== undefined) currentQuestion.value = data.question
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(log => {
+                        addLog(log.level, log.message, log.type)
+                    })
+                }
+                if (data.status) {
+                    connectionStatus.value = data.status.is_connected ? 'connected' : 'disconnected'
+                    isPaused.value = data.status.is_paused
+                    currentSessionId.value = data.status.session_id
+                }
             } catch (e) {
                 console.error('WS Parse Error:', e)
             }
@@ -55,29 +68,34 @@ export const useGameStore = defineStore('game', () => {
         }
     }
 
-    async function startStream(targetId, mode) {
+    async function startStream(username, mode = 'live') {
+        isLoading.value = true
         try {
-            const res = await fetch(`http://localhost:8000/control/start?target_id=${targetId}&mode=${mode}`, {
-                method: 'POST'
+            const res = await fetch('http://localhost:8000/stream/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tiktok_username: username, mode })
             })
             const data = await res.json()
             if (data.status === 'started') {
-                isConnected.value = true
-                addLog('INFO', `Stream started for ${targetId} (${mode})`)
+                connectionStatus.value = 'connected'
+                addLog('INFO', `Stream started for ${username} (${mode})`)
             }
         } catch (e) {
             addLog('ERROR', `Failed to start stream: ${e.message}`)
+        } finally {
+            isLoading.value = false
         }
     }
 
     async function stopStream() {
         try {
-            const res = await fetch('http://localhost:8000/control/stop', {
+            const res = await fetch('http://localhost:8000/stream/stop', {
                 method: 'POST'
             })
             const data = await res.json()
             if (data.status === 'stopped') {
-                isConnected.value = false
+                connectionStatus.value = 'disconnected'
                 addLog('INFO', 'Stream stopped')
             }
         } catch (e) {
@@ -85,62 +103,73 @@ export const useGameStore = defineStore('game', () => {
         }
     }
 
-    async function resetSession(sessionId) {
+    async function pauseStream() {
         try {
+            await fetch('http://localhost:8000/stream/pause', { method: 'POST' })
+            isPaused.value = true
+            addLog('INFO', 'Stream paused')
+        } catch (e) {
+            addLog('ERROR', `Failed to pause stream: ${e.message}`)
+        }
+    }
+
+    async function resumeStream() {
+        try {
+            await fetch('http://localhost:8000/stream/resume', { method: 'POST' })
+            isPaused.value = false
+            addLog('INFO', 'Stream resumed')
+        } catch (e) {
+            addLog('ERROR', `Failed to resume stream: ${e.message}`)
+        }
+    }
+
+    async function resetSession() {
+        try {
+            // Generate a new session ID or keep current? Usually we want a new one or just reset scores.
+            // For now, let's just reset scores for current session logic if needed, 
+            // but the API /session/set allows setting a new ID.
+            // Let's assume we keep the same ID but reset scores for now, or generate a timestamped one.
+            const newSessionId = `session_${Date.now()}`
             const res = await fetch('http://localhost:8000/session/set', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId, reset_scores: true })
+                body: JSON.stringify({ session_id: newSessionId, reset_scores: true })
             })
             const data = await res.json()
             currentSessionId.value = data.session_id
             leaderboard.value = []
-            addLog('INFO', `Session reset: ${sessionId}`)
+            addLog('INFO', `Session reset: ${newSessionId}`)
         } catch (e) {
             addLog('ERROR', `Failed to reset session: ${e.message}`)
         }
     }
 
-    async function selectWinner() {
-        try {
-            const res = await fetch('http://localhost:8000/winner/select', {
-                method: 'POST'
-            })
-            if (!res.ok) throw new Error('No winner found')
-            const data = await res.json()
-            addLog('INFO', `Winner selected: ${data.nickname}`)
-            return data
-        } catch (e) {
-            addLog('ERROR', `Failed to select winner: ${e.message}`)
-            return null
-        }
-    }
-
-    function addLog(level, message) {
+    function addLog(level, message, type = 'System') {
         logs.value.unshift({
-            timestamp: new Date().toISOString(),
+            time: new Date().toLocaleTimeString(),
             level,
+            type,
             message
         })
-        // Keep only last 100 logs
-        if (logs.value.length > 100) {
-            logs.value.pop()
-        }
+        if (logs.value.length > 100) logs.value.pop()
     }
 
     return {
-        isConnected,
-        isScoringActive,
+        connectionStatus,
+        isPaused,
         currentSessionId,
         targetTiktokId,
         leaderboard,
+        currentQuestion,
         logs,
+        isLoading,
         fetchStatus,
         connectWebSocket,
         startStream,
         stopStream,
+        pauseStream,
+        resumeStream,
         resetSession,
-        selectWinner,
         addLog
     }
 })
