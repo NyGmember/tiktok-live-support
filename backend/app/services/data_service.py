@@ -83,7 +83,6 @@ class DataService:
                 select(Comment)
                 .where(Comment.user_id == user_id)
                 .where(Comment.session_id == session_id)
-                .where(Comment.is_used == False)
                 .order_by(Comment.timestamp.desc())
             )
             return result.scalars().all()
@@ -100,4 +99,18 @@ class DataService:
                     await session.commit()
             except Exception as e:
                 print(f"Error marking comment as used: {e}")
+                await session.rollback()
+
+    async def unmark_comment_as_used(self, comment_id: int):
+        async with AsyncSessionLocal() as session:
+            try:
+                result = await session.execute(
+                    select(Comment).where(Comment.id == comment_id)
+                )
+                comment = result.scalar_one_or_none()
+                if comment:
+                    comment.is_used = False
+                    await session.commit()
+            except Exception as e:
+                print(f"Error unmarking comment as used: {e}")
                 await session.rollback()

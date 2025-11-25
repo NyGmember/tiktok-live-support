@@ -198,7 +198,25 @@ class ScoringService:
             self.r.hincrby(user_hash_key, "unique_comments_count", 1)
 
         # Always increment total comments
+        # Always increment total comments
         self.r.hincrby(user_hash_key, "total_comments", 1)
+
+    def increment_used_comments(self, user_id: str):
+        """
+        Increment the count of used comments for a user.
+        """
+        user_hash_key = f"{self.user_data_key_prefix}:{user_id}"
+        self.r.hincrby(user_hash_key, "used_comments_count", 1)
+
+    def decrement_used_comments(self, user_id: str):
+        """
+        Decrement the count of used comments for a user.
+        """
+        user_hash_key = f"{self.user_data_key_prefix}:{user_id}"
+        # Ensure we don't go below 0
+        current = int(self.r.hget(user_hash_key, "used_comments_count") or 0)
+        if current > 0:
+            self.r.hincrby(user_hash_key, "used_comments_count", -1)
 
     # ==================================================================
     # == ส่วนของการ "แสดงผล" (คำนวณจาก ZSET ที่เตรียมไว้แล้ว) ==
@@ -400,6 +418,8 @@ class ScoringService:
         pipe.hincrby(user_hash_key, "used_likes", current_likes)
         pipe.hincrby(user_hash_key, "used_gifts_sent", current_gifts_sent)
         pipe.hincrby(user_hash_key, "used_gift_coins", current_gift_coins)
+        # Reset used comments count for new session/round
+        pipe.hset(user_hash_key, "used_comments_count", 0)
 
         # 2.2 Merge Gifts เข้า Used Gifts Breakdown (ต้องทำแบบ Read-Modify-Write ถ้าจะเก็บละเอียด)
         # แต่เพื่อความง่ายและ Atomic เราจะเก็บเป็น JSON List ของ "Sessions" หรือแค่รวมยอด
@@ -417,6 +437,9 @@ class ScoringService:
         pipe.hset(user_hash_key, "total_gifts_sent", 0)
         pipe.hset(user_hash_key, "total_gift_coins", 0)
         pipe.hset(user_hash_key, "points_from_gifts", 0)
+
+        pipe.hset(user_hash_key, "total_comments", 0)
+        pipe.hset(user_hash_key, "unique_comments_count", 0)
 
         # 2.4 Reset Gifts Breakdown
         pipe.delete(user_gifts_hash_key)
@@ -481,7 +504,10 @@ class ScoringService:
                     "nickname": stats.get("nickname", nickname),
                     "score": score,
                     "avatar_url": stats.get("avatar_url", ""),
-                    "comments": int(stats.get("total_comments", 0)),
+                    "score": score,
+                    "avatar_url": stats.get("avatar_url", ""),
+                    "comments": int(stats.get("total_comments", 0))
+                    - int(stats.get("used_comments_count", 0)),
                     "likes": int(stats.get("total_likes", 0)),
                     "gifts": int(stats.get("total_gifts_sent", 0)),
                     "gifts_breakdown": gifts_breakdown,

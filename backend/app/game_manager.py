@@ -62,8 +62,13 @@ class GameManager:
         self.recent_logs = []
         return logs
 
-    def set_current_question(
-        self, user_id: str, nickname: str, avatar_url: str, content: str
+    async def set_current_question(
+        self,
+        user_id: str,
+        nickname: str,
+        avatar_url: str,
+        content: str,
+        comment_id: int = None,
     ):
         self.current_question = {
             "user_id": user_id,
@@ -72,6 +77,14 @@ class GameManager:
             "content": content,
             "timestamp": datetime.now().isoformat(),
         }
+
+        if comment_id:
+            # Mark as used in DB
+            await self.data_service.mark_comment_as_used(comment_id)
+            # Increment used count in Redis (for Leaderboard)
+            if self.scoring_service:
+                self.scoring_service.increment_used_comments(user_id)
+
         return self.current_question
 
     def get_current_question(self):
@@ -277,6 +290,17 @@ class GameManager:
         self.add_log("INFO", f"Reset score for user {user_id}", "System")
 
         return {"status": "reset"}
+
+    async def unmark_comment_as_used(self, user_id: str, comment_id: int):
+        """Unmark comment as used (Restore to unused)"""
+        # 1. Unmark in DB
+        await self.data_service.unmark_comment_as_used(comment_id)
+
+        # 2. Decrement used count in Redis
+        if self.scoring_service:
+            self.scoring_service.decrement_used_comments(user_id)
+
+        return {"status": "unmarked"}
 
 
 game_manager = GameManager()

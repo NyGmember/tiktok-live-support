@@ -3,78 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
 from contextlib import asynccontextmanager
-
-from app.game_manager import game_manager
-from app.schemas import SessionRequest, SystemStatus, WinnerResponse
-from app.models.base import init_db
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("Initializing Database...")
-    try:
-        await init_db()
-        print("Database Initialized.")
-    except Exception as e:
-        print(f"Database Initialization Failed: {e}")
-
-    yield
-
-    # Shutdown
-    await game_manager.stop_stream()
-
-
-app = FastAPI(title="TikTok Live Support System", lifespan=lifespan)
-
-# --- CORS Setting ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ================= API ENDPOINTS =================
-
-
-@app.get("/")
-async def root():
-    return {"message": "TikTok Live API is running"}
-
-
-# --- 1. Session Management ---
-@app.post("/session/set")
-async def set_session(req: SessionRequest):
-    """ตั้งค่า Session ใหม่ หรือ Reset"""
-    return await game_manager.set_session(req.session_id, req.reset_scores)
-
-
-# --- 2. Control System (Start/Stop Live) ---
-@app.post("/control/start")
-async def start_stream(target_id: str = "@test", mode: str = "mock"):
-    """เริ่มรับข้อมูล (เชื่อมต่อ TikTok/Mock)"""
-    return await game_manager.start_stream(target_id, mode)
-
-
-@app.post("/control/stop")
-async def stop_stream():
-    """ตัดการเชื่อมต่อ"""
-    return await game_manager.stop_stream()
-
-
-@app.post("/control/scoring/{active}")
-async def set_scoring(active: bool):
-    """เปิด/ปิด การรับคะแนน"""
-    return game_manager.toggle_scoring(active)
-
-
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-import asyncio
-import json
-from contextlib import asynccontextmanager
 from pydantic import BaseModel
 
 from app.game_manager import game_manager
@@ -125,7 +53,6 @@ async def set_session(req: SessionRequest):
 
 
 # --- 2. Control System (Start/Stop Live) ---
-# Removed old /control/start, /control/stop, /control/scoring/{active}
 
 
 class StreamRequest(BaseModel):
@@ -181,13 +108,23 @@ class QuestionRequest(BaseModel):
     nickname: str
     avatar_url: str
     content: str
+    comment_id: int = None
 
 
 @app.post("/question")
-def set_question(request: QuestionRequest):
-    return game_manager.set_current_question(
-        request.user_id, request.nickname, request.avatar_url, request.content
+async def set_question(request: QuestionRequest):
+    return await game_manager.set_current_question(
+        request.user_id,
+        request.nickname,
+        request.avatar_url,
+        request.content,
+        request.comment_id,
     )
+
+
+@app.post("/comment/{comment_id}/unuse")
+async def unuse_comment(comment_id: int, user_id: str):
+    return await game_manager.unmark_comment_as_used(user_id, comment_id)
 
 
 @app.get("/question")

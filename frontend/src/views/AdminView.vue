@@ -1,5 +1,14 @@
 <template>
-  <div class="min-h-screen bg-gray-100 p-6 flex flex-col gap-6">
+  <div class="min-h-screen bg-gray-100 p-6 flex flex-col gap-6 relative">
+    <!-- Toast Notification -->
+    <transition name="fade">
+      <div
+        v-if="toast.show"
+        class="fixed top-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-[9999] flex items-center gap-2"
+      >
+        <span>{{ toast.message }}</span>
+      </div>
+    </transition>
     <!-- Top Section: 3 Columns -->
     <div class="grid grid-cols-12 gap-6 h-[500px]">
       <!-- Left: Stream Control (3 cols) -->
@@ -82,9 +91,11 @@
           class="text-xl font-bold mb-4 text-gray-800 flex items-center justify-between"
         >
           <span>🏆 Live Leaderboard</span>
-          <span class="text-sm font-normal text-gray-500"
-            >{{ store.leaderboard.length }} users</span
-          >
+          <div class="flex items-center gap-1 text-sm text-gray-500">
+             <span class="font-bold text-blue-600 text-lg">{{ activeUsersCount }}</span>
+             <span>|</span>
+             <span>{{ store.leaderboard.length }} users</span>
+          </div>
         </h2>
 
         <div class="flex-1 overflow-y-auto pr-2 space-y-1">
@@ -235,7 +246,7 @@
                     class="flex items-center justify-between cursor-pointer bg-gray-100 p-2 rounded-t-lg hover:bg-gray-200 transition"
                 >
                     <h4 class="font-bold text-gray-700 flex items-center text-sm">
-                        <span>💬 Unused Comments</span>
+                        <span>💬 New Comments</span>
                         <span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{{ unusedComments.length }}</span>
                     </h4>
                     <span class="text-xs text-gray-500">{{ isUnusedCommentsOpen ? '▼' : '▶' }}</span>
@@ -252,7 +263,7 @@
                             <p class="text-sm text-gray-800 break-words">"{{ comment.content }}"</p>
                         </div>
                         <button
-                            @click="selectQuestion(comment.content)"
+                            @click="selectQuestion(comment)"
                             class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2.0 rounded transition"
                             title="Share to Screen"
                         >
@@ -260,7 +271,7 @@
                         </button>
                     </div>
                     <div v-if="unusedComments.length === 0" class="text-center text-gray-400 py-4 text-xs italic">
-                        No unused comments.
+                        No new comments.
                     </div>
                 </div>
             </div>
@@ -272,13 +283,19 @@
                     class="flex items-center justify-between cursor-pointer bg-gray-100 p-2 rounded-t-lg hover:bg-gray-200 transition"
                 >
                     <h4 class="font-bold text-gray-600 flex items-center text-sm">
-                        <span>history Used Comments</span>
+                        <span>📜 History / Used Items</span>
                         <span class="ml-2 text-xs bg-gray-200 px-2 py-0.5 rounded-full">{{ usedComments.length }}</span>
                     </h4>
                     <span class="text-xs text-gray-500">{{ isUsedCommentsOpen ? '▼' : '▶' }}</span>
                 </div>
                 
                 <div v-if="isUsedCommentsOpen" class="max-h-40 overflow-y-auto bg-gray-50 border border-t-0 border-gray-200 rounded-b-lg p-2 space-y-2">
+                     <!-- Used Stats Summary -->
+                     <div class="flex gap-2 mb-2 text-xs font-bold text-gray-500 bg-gray-100 p-2 rounded">
+                        <span>❤️ Used Likes: {{ selectedUser.used_likes || 0 }}</span>
+                        <span>🎁 Used Gifts: {{ selectedUser.used_gifts_sent || 0 }}</span>
+                     </div>
+
                      <div
                         v-for="(comment, idx) in usedComments"
                         :key="idx"
@@ -288,14 +305,22 @@
                             <div class="text-[10px] text-gray-400 mb-0.5">{{ new Date(comment.timestamp).toLocaleTimeString() }}</div>
                             <p class="text-sm text-gray-600 break-words">"{{ comment.content }}"</p>
                         </div>
-                        <!-- Re-use button? Optional. -->
-                         <button
-                            @click="selectQuestion(comment.content)"
-                            class="text-gray-400 hover:text-blue-500 hover:bg-gray-200 p-1.5 rounded transition"
-                            title="Re-share"
-                        >
-                            🔄
-                        </button>
+                        <div class="flex flex-col gap-1">
+                             <button
+                                @click="selectQuestion(comment)"
+                                class="text-gray-400 hover:text-blue-500 hover:bg-gray-200 p-1.5 rounded transition"
+                                title="Re-share"
+                            >
+                                🔄
+                            </button>
+                             <button
+                                @click="unuseComment(comment)"
+                                class="text-gray-400 hover:text-red-500 hover:bg-red-100 p-1.5 rounded transition"
+                                title="Un-use (Restore)"
+                            >
+                                ↩️
+                            </button>
+                        </div>
                     </div>
                     <div v-if="usedComments.length === 0" class="text-center text-gray-400 py-4 text-xs italic">
                         No used comments history.
@@ -317,7 +342,7 @@
 
     <!-- Bottom Section: Logs -->
     <div
-      class="bg-white rounded-xl shadow-md p-4 flex-1 h-[250px] min-h-[150px] max-h-[150px] flex flex-col"
+      class="bg-white rounded-xl shadow-md p-4 flex-1 h-[250px] min-h-[250px] max-h-[250px] flex flex-col"
     >
       <div class="flex items-center justify-between mb-2">
         <h2 class="text-sm font-bold text-gray-800">📜 System Logs</h2>
@@ -371,6 +396,25 @@ const logTabs = ["All", "System", "Chat", "Gift", "Like"]; // Removed "System"
 const isUnusedCommentsOpen = ref(true);
 const isUsedCommentsOpen = ref(false);
 
+// Toast State
+const toast = ref({
+  show: false,
+  message: "",
+});
+
+let toastTimeout;
+const showToast = (message) => {
+  console.log("Showing toast:", message);
+  if (toastTimeout) clearTimeout(toastTimeout);
+  
+  toast.value.message = message;
+  toast.value.show = true;
+  
+  toastTimeout = setTimeout(() => {
+    toast.value.show = false;
+  }, 3000);
+};
+
 // Computed
 const statusColorClass = computed(() => {
   switch (store.connectionStatus) {
@@ -397,6 +441,10 @@ const unusedComments = computed(() => {
 
 const usedComments = computed(() => {
     return userComments.value.filter(c => c.is_used);
+});
+
+const activeUsersCount = computed(() => {
+    return store.leaderboard.filter(u => u.score > 0).length;
 });
 
 // Methods
@@ -443,16 +491,17 @@ const selectUser = async (user) => {
   }
 };
 
-const selectQuestion = async (commentText) => {
+const selectQuestion = async (comment) => {
   if (!selectedUser.value) return;
   try {
     await axios.post("http://localhost:8000/question", {
       user_id: selectedUser.value.user_id,
       nickname: selectedUser.value.nickname,
       avatar_url: selectedUser.value.avatar_url,
-      content: commentText,
+      content: comment.content,
+      comment_id: comment.id, // Pass comment ID to mark as used
     });
-    alert("Question selected for overlay!");
+    showToast("Question selected for overlay!");
     
     // Optimistically mark as used in UI or re-fetch
     // For now, let's re-fetch to be safe and sync with DB
@@ -460,6 +509,19 @@ const selectQuestion = async (commentText) => {
     
   } catch (error) {
     console.error("Failed to set question", error);
+  }
+};
+
+const unuseComment = async (comment) => {
+  if (!selectedUser.value) return;
+  try {
+    await axios.post(
+      `http://localhost:8000/comment/${comment.id}/unuse?user_id=${selectedUser.value.user_id}`
+    );
+    showToast("Comment restored to unused.");
+    await selectUser(selectedUser.value);
+  } catch (error) {
+    console.error("Failed to unuse comment", error);
   }
 };
 
@@ -472,9 +534,9 @@ const resetUserScore = async () => {
       );
       // Refresh leaderboard
       // store.fetchLeaderboard(); // WebSocket handles this
-      alert("User score reset.");
-      // Refresh user details
-      await selectUser(selectedUser.value);
+      showToast("User score reset.");
+      // Clear user details
+      selectedUser.value = null;
     } catch (error) {
       console.error("Failed to reset user score", error);
     }
@@ -500,3 +562,15 @@ onMounted(() => {
   store.connectWebSocket();
 });
 </script>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
