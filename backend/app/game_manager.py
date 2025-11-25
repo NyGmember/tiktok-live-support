@@ -7,7 +7,9 @@ from app.services.data_service import DataService
 from app.adapters.mock_adapter import MockLiveAdapter
 from app.adapters.tiktok_adapter import TikTokLiveAdapter
 from app.models.base import AsyncSessionLocal
-from app.models.session import LiveSession
+from app.models.session import LiveSession, SessionStatus
+from sqlalchemy.future import select
+import uuid
 
 
 class GameManager:
@@ -94,8 +96,14 @@ class GameManager:
         self.current_question = None
         return {"status": "cleared"}
 
-    async def set_session(self, session_id: str, reset: bool = False):
+    async def set_session(
+        self, session_id: str, reset: bool = False, channel_name: str = None
+    ):
         """เปลี่ยน Session หรือ Reset"""
+        # If session_id is "new", generate a UUID
+        if session_id == "new":
+            session_id = uuid.uuid4().hex
+
         self.current_session_id = session_id
         self.scoring_service = ScoringService(self.redis, self.current_session_id)
 
@@ -104,16 +112,26 @@ class GameManager:
             if keys:
                 self.redis.delete(*keys)
 
-        # Create Session in DB
+        # Create or Update Session in DB
         try:
             async with AsyncSessionLocal() as session:
                 existing = await session.get(LiveSession, session_id)
                 if not existing:
-                    new_session = LiveSession(id=session_id)
+                    new_session = LiveSession(
+                        id=session_id,
+                        channel_name=channel_name,
+                        status=SessionStatus.STREAMING,
+                    )
                     session.add(new_session)
                     await session.commit()
                     self.add_log("INFO", f"Created new session: {session_id}", "System")
                 else:
+                    # Resume: Update status to STREAMING if it was CLOSED
+                    if existing.status == SessionStatus.CLOSED:
+                        existing.status = SessionStatus.STREAMING
+                        existing.end_time = None  # Clear end time
+                        await session.commit()
+
                     self.add_log("INFO", f"Resumed session: {session_id}", "System")
         except Exception as e:
             print(f"DB Error in set_session: {e}")
@@ -126,9 +144,22 @@ class GameManager:
             return {"status": "already_connected"}
 
         # Auto-generate session if not set
+        # Auto-generate session if not set (should be handled by set_session("new"))
         if not self.current_session_id:
-            self.current_session_id = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-            await self.set_session(self.current_session_id)
+            await self.set_session("new", channel_name=target_id)
+
+        # Save last channel name
+        self.redis.set("last_channel_name", target_id)
+
+        # Update channel name in DB if not set
+        try:
+            async with AsyncSessionLocal() as session:
+                existing = await session.get(LiveSession, self.current_session_id)
+                if existing and not existing.channel_name:
+                    existing.channel_name = target_id
+                    await session.commit()
+        except Exception as e:
+            print(f"DB Error updating channel name: {e}")
 
         self.target_tiktok_id = target_id
         self.is_connected = True
@@ -195,14 +226,27 @@ class GameManager:
             if self.adapter_task:
                 self.adapter_task.cancel()
 
+        # Update DB status to CLOSED
+        if self.current_session_id:
+            try:
+                async with AsyncSessionLocal() as session:
+                    existing = await session.get(LiveSession, self.current_session_id)
+                    if existing:
+                        existing.status = SessionStatus.CLOSED
+                        existing.end_time = datetime.utcnow()
+                        await session.commit()
+            except Exception as e:
+                print(f"DB Error closing session: {e}")
+
         self.adapter = None
         self.adapter_task = None
         self.is_connected = False
         self.is_paused = False
         self.is_scoring_active = False
-        self.current_session_id = None  # Clear session as requested
+        # Do NOT clear current_session_id immediately to allow reviewing stats
+        # self.current_session_id = None
 
-        self.add_log("INFO", "Stream stopped and session cleared", "System")
+        self.add_log("INFO", "Stream stopped and session closed", "System")
         return {"status": "stopped"}
 
     def toggle_scoring(self, active: bool):
@@ -289,6 +333,10 @@ class GameManager:
 
         self.add_log("INFO", f"Reset score for user {user_id}", "System")
 
+        # 3. If current question belongs to this user, clear it (Fade out overlay)
+        if self.current_question and self.current_question.get("user_id") == user_id:
+            self.clear_current_question()
+
         return {"status": "reset"}
 
     async def unmark_comment_as_used(self, user_id: str, comment_id: int):
@@ -301,6 +349,61 @@ class GameManager:
             self.scoring_service.decrement_used_comments(user_id)
 
         return {"status": "unmarked"}
+
+    async def get_recent_sessions(self):
+        """Get list of recent sessions (Closed)"""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(LiveSession)
+                    .order_by(LiveSession.start_time.desc())
+                    .limit(20)
+                )
+                sessions = result.scalars().all()
+                return [
+                    {
+                        "id": s.id,
+                        "channel_name": s.channel_name,
+                        "start_time": (
+                            s.start_time.isoformat() if s.start_time else None
+                        ),
+                        "end_time": s.end_time.isoformat() if s.end_time else None,
+                        "status": s.status,
+                        "total_score": s.total_score,
+                    }
+                    for s in sessions
+                ]
+        except Exception as e:
+            print(f"Error fetching recent sessions: {e}")
+            return []
+
+    async def get_session_details(self, session_id: str):
+        """Get details for a specific session (for review)"""
+        # Re-use ScoringService logic but with a specific session_id
+        temp_scoring = ScoringService(self.redis, session_id)
+        leaderboard = temp_scoring.get_leaderboard()
+
+        # Get basic info from DB
+        session_info = {}
+        try:
+            async with AsyncSessionLocal() as session:
+                s = await session.get(LiveSession, session_id)
+                if s:
+                    session_info = {
+                        "id": s.id,
+                        "channel_name": s.channel_name,
+                        "start_time": (
+                            s.start_time.isoformat() if s.start_time else None
+                        ),
+                        "status": s.status,
+                    }
+        except Exception as e:
+            print(f"Error fetching session details: {e}")
+
+        return {"info": session_info, "leaderboard": leaderboard}
+
+    def get_last_channel_name(self):
+        return self.redis.get("last_channel_name") or ""
 
 
 game_manager = GameManager()

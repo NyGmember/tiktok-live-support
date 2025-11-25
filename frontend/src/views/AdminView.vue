@@ -13,20 +13,59 @@
     <div class="grid grid-cols-12 gap-6 h-[500px]">
       <!-- Left: Stream Control (3 cols) -->
       <div class="col-span-3 bg-white rounded-xl shadow-md p-6 flex flex-col">
-        <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
-          <span class="mr-2">🎮</span> Stream Control
-        </h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-800 flex items-center">
+            <span class="mr-2">🎮</span> Control
+            </h2>
+            <!-- Status Badge -->
+            <span 
+                class="px-2 py-1 rounded text-xs font-bold uppercase tracking-wider"
+                :class="statusColorClass"
+            >
+                {{ store.connectionStatus }}
+            </span>
+        </div>
 
-        <!-- Status -->
-        <div class="mb-6 p-4 rounded-lg text-center" :class="statusColorClass">
-          <p class="text-sm font-semibold uppercase tracking-wider">Status</p>
-          <p class="text-2xl font-black">{{ store.connectionStatus }}</p>
+        <!-- Header Buttons (Overlays & Review) -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+            <a href="/overlay" target="_blank" class="flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 p-2 rounded transition text-xs text-center" title="Leaderboard Overlay">
+                <span class="text-lg">🏆</span>
+                <span class="text-[10px] mt-1">L.Board</span>
+            </a>
+            <a href="/question" target="_blank" class="flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 p-2 rounded transition text-xs text-center" title="Question Overlay">
+                <span class="text-lg">❓</span>
+                <span class="text-[10px] mt-1">Q.Overlay</span>
+            </a>
+             <router-link to="/sessions" class="flex flex-col items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 p-2 rounded transition text-xs text-center" title="Session Review">
+                <span class="text-lg">📊</span>
+                <span class="text-[10px] mt-1">Review</span>
+            </router-link>
         </div>
 
         <!-- Controls -->
         <div class="space-y-4 flex-1">
           <!-- Start -->
           <div v-if="store.connectionStatus === 'disconnected'">
+            
+            <!-- Session Selection (Collapsed) -->
+            <div class="mb-4 border rounded-lg overflow-hidden">
+                <button 
+                    @click="isSessionSelectOpen = !isSessionSelectOpen"
+                    class="w-full flex justify-between items-center bg-gray-50 p-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+                >
+                    <span>{{ selectedSessionId === 'new' ? '✨ Create New Session' : '🔄 Resume Session' }}</span>
+                    <span>{{ isSessionSelectOpen ? '▲' : '▼' }}</span>
+                </button>
+                <div v-if="isSessionSelectOpen" class="p-2 bg-white border-t">
+                    <select v-model="selectedSessionId" @change="onSessionSelect" class="w-full p-1 text-sm border rounded">
+                        <option value="new">✨ Create New Session</option>
+                        <option v-for="s in recentSessions" :key="s.id" :value="s.id">
+                            {{ s.channel_name || 'Unknown' }} ({{ new Date(s.start_time).toLocaleString() }})
+                        </option>
+                    </select>
+                </div>
+            </div>
+
             <label class="block text-sm font-medium text-gray-700 mb-1"
               >TikTok Username (@)</label
             >
@@ -160,9 +199,6 @@
                   <img v-if="gift.icon" :src="gift.icon" class="w-3 h-3 mr-1" />
                   <span v-else>🎁</span>
                   <span>x{{ gift.count }}</span>
-                  <span class="text-gray-400 ml-0.5"
-                    >({{ gift.count * gift.diamond_count }})</span
-                  >
                 </div>
               </div>
             </div>
@@ -342,7 +378,7 @@
 
     <!-- Bottom Section: Logs -->
     <div
-      class="bg-white rounded-xl shadow-md p-4 flex-1 h-[250px] min-h-[250px] max-h-[250px] flex flex-col"
+      class="bg-white rounded-xl shadow-md p-4 flex-1 h-[220px] min-h-[220px] max-h-[220px] flex flex-col"
     >
       <div class="flex items-center justify-between mb-2">
         <h2 class="text-sm font-bold text-gray-800">📜 System Logs</h2>
@@ -390,7 +426,12 @@ const selectedUser = ref(null);
 const userComments = ref([]);
 const giftBreakdown = ref({});
 const activeTab = ref("All");
-const logTabs = ["All", "System", "Chat", "Gift", "Like"]; // Removed "System"
+const logTabs = ["All", "System", "Chat", "Gift", "Like"]; 
+
+// Session State
+const isSessionSelectOpen = ref(false);
+const recentSessions = ref([]);
+const selectedSessionId = ref("new");
 
 // UI State for Collapsible Sections
 const isUnusedCommentsOpen = ref(true);
@@ -448,9 +489,48 @@ const activeUsersCount = computed(() => {
 });
 
 // Methods
-const startStream = () => {
+const startStream = async () => {
   if (!tiktokUsername.value) return alert("Please enter a username");
+  
+  // If resuming, set session first
+  if (selectedSessionId.value !== 'new') {
+      await store.setSession(selectedSessionId.value);
+  } else {
+      // New session will be created by backend if not set, 
+      // but we should probably explicitly set it to "new" to trigger UUID generation
+      await store.setSession("new"); 
+  }
+  
   store.startStream(tiktokUsername.value);
+};
+
+const fetchRecentSessions = async () => {
+    try {
+        const res = await axios.get("http://localhost:8000/sessions/history");
+        recentSessions.value = res.data;
+    } catch (e) {
+        console.error("Failed to fetch sessions", e);
+    }
+};
+
+const fetchLastChannel = async () => {
+    try {
+        const res = await axios.get("http://localhost:8000/channel/last");
+        if (res.data.channel_name) {
+            tiktokUsername.value = res.data.channel_name;
+        }
+    } catch (e) {
+        console.error("Failed to fetch last channel", e);
+    }
+};
+
+const onSessionSelect = () => {
+    if (selectedSessionId.value !== 'new') {
+        const session = recentSessions.value.find(s => s.id === selectedSessionId.value);
+        if (session && session.channel_name) {
+            tiktokUsername.value = session.channel_name;
+        }
+    }
 };
 
 const pauseStream = () => store.pauseStream();
@@ -560,6 +640,8 @@ const getLogColor = (type) => {
 
 onMounted(() => {
   store.connectWebSocket();
+  fetchRecentSessions();
+  fetchLastChannel();
 });
 </script>
 

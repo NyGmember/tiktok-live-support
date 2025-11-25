@@ -123,22 +123,25 @@ export const useGameStore = defineStore('game', () => {
         }
     }
 
-    async function resetSession() {
+    async function setSession(sessionId, resetScores = false) {
         try {
-            // Generate a new session ID or keep current? Usually we want a new one or just reset scores.
-            // For now, let's just reset scores for current session logic if needed, 
-            // but the API /session/set allows setting a new ID.
-            // Let's assume we keep the same ID but reset scores for now, or generate a timestamped one.
-            const newSessionId = `session_${Date.now()}`
             const res = await fetch('http://localhost:8000/session/set', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: newSessionId, reset_scores: true })
+                body: JSON.stringify({ session_id: sessionId, reset_scores: resetScores })
             })
             const data = await res.json()
             currentSessionId.value = data.session_id
-            leaderboard.value = []
-            addLog('INFO', `Session reset: ${newSessionId}`)
+            addLog('INFO', `Session set: ${data.session_id}`)
+        } catch (e) {
+            addLog('ERROR', `Failed to set session: ${e.message}`)
+        }
+    }
+
+    async function resetSession() {
+        try {
+            const newSessionId = `session_${Date.now()}`
+            await setSession(newSessionId, true)
         } catch (e) {
             addLog('ERROR', `Failed to reset session: ${e.message}`)
         }
@@ -169,6 +172,7 @@ export const useGameStore = defineStore('game', () => {
         pauseStream,
         resumeStream,
         resetSession,
+        setSession,
         addLog
     }
 })

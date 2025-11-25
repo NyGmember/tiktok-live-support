@@ -49,7 +49,23 @@ async def root():
 @app.post("/session/set")
 async def set_session(req: SessionRequest):
     """ตั้งค่า Session ใหม่ หรือ Reset"""
+    # Note: req.session_id can be "new"
     return await game_manager.set_session(req.session_id, req.reset_scores)
+
+
+@app.get("/sessions/history")
+async def get_session_history():
+    return await game_manager.get_recent_sessions()
+
+
+@app.get("/sessions/{session_id}")
+async def get_session_details(session_id: str):
+    return await game_manager.get_session_details(session_id)
+
+
+@app.get("/channel/last")
+def get_last_channel():
+    return {"channel_name": game_manager.get_last_channel_name()}
 
 
 # --- 2. Control System (Start/Stop Live) ---
@@ -153,6 +169,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
+            # Check if client disconnected
+            # if websocket.client_state == WebSocket.client_state.DISCONNECTED:
+            #    break
+
             data = game_manager.get_leaderboard()
             question = game_manager.get_current_question()
             logs = game_manager.get_and_clear_logs()
@@ -170,7 +190,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 }
             )
             await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass  # Already closed
