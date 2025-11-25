@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 p-6 flex flex-col gap-6">
     <!-- Top Section: 3 Columns -->
-    <div class="grid grid-cols-12 gap-6 h-[600px]">
+    <div class="grid grid-cols-12 gap-6 h-[500px]">
       <!-- Left: Stream Control (3 cols) -->
       <div class="col-span-3 bg-white rounded-xl shadow-md p-6 flex flex-col">
         <h2 class="text-xl font-bold mb-4 text-gray-800 flex items-center">
@@ -87,12 +87,12 @@
           >
         </h2>
 
-        <div class="flex-1 overflow-y-auto pr-2 space-y-2">
+        <div class="flex-1 overflow-y-auto pr-2 space-y-1">
           <div
             v-for="(user, index) in store.leaderboard"
             :key="user.user_key"
             @click="selectUser(user)"
-            class="flex items-center p-3 rounded-lg cursor-pointer transition border hover:bg-blue-50 hover:border-blue-300"
+            class="flex items-center p-2 rounded-lg cursor-pointer transition border hover:bg-blue-50 hover:border-blue-300"
             :class="
               selectedUser?.user_id === user.user_id
                 ? 'bg-blue-100 border-blue-500'
@@ -101,7 +101,7 @@
           >
             <!-- Rank -->
             <div
-              class="w-8 h-8 flex items-center justify-center rounded-full font-bold mr-3 text-sm"
+              class="w-6 h-6 flex items-center justify-center rounded-full font-bold mr-2 text-xs"
               :class="
                 index < 3
                   ? 'bg-yellow-400 text-white'
@@ -117,120 +117,192 @@
                 user.avatar_url ||
                 `https://ui-avatars.com/api/?name=${user.nickname}&background=random`
               "
-              class="w-10 h-10 rounded-full border border-gray-200 mr-3 object-cover"
+              class="w-8 h-8 rounded-full border border-gray-200 mr-2 object-cover"
             />
 
             <!-- Info -->
             <div class="flex-1 min-w-0">
-              <p class="font-bold text-gray-900 truncate">
-                {{ user.nickname }}
-              </p>
-              <div class="flex items-center text-xs text-gray-500 space-x-2">
+              <div class="flex justify-between items-center">
+                <p class="font-bold text-gray-900 truncate text-sm">
+                  {{ user.nickname }}
+                </p>
+                <div class="text-right font-black text-sm text-blue-600">
+                  {{ user.score }}
+                </div>
+              </div>
+
+              <!-- Stats -->
+              <div class="flex items-center text-xs text-gray-500 space-x-2 mt-0.5">
                 <span>💬 {{ user.comments }}</span>
                 <span>❤️ {{ user.likes }}</span>
                 <span>🎁 {{ user.gifts }}</span>
               </div>
-            </div>
-
-            <!-- Score -->
-            <div class="text-right font-black text-lg text-blue-600">
-              {{ user.score }}
+              
+              <!-- Gift Icons Breakdown -->
+              <div class="flex items-center gap-1 mt-1 overflow-x-auto">
+                <div
+                  v-for="(gift, name) in user.gifts_breakdown"
+                  :key="name"
+                  class="flex items-center bg-gray-100 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
+                  :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} diamonds`"
+                >
+                  <img v-if="gift.icon" :src="gift.icon" class="w-3 h-3 mr-1" />
+                  <span v-else>🎁</span>
+                  <span>x{{ gift.count }}</span>
+                  <span class="text-gray-400 ml-0.5"
+                    >({{ gift.count * gift.diamond_count }})</span
+                  >
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Right: User Info (4 cols) -->
-      <div class="col-span-4 bg-white rounded-xl shadow-md p-6 flex flex-col">
-        <h2 class="text-xl font-bold mb-4 text-gray-800">👤 User Details</h2>
+      <div class="col-span-4 bg-white rounded-xl shadow-md p-6 flex flex-col h-full overflow-hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-gray-800">👤 User Details</h2>
+          <button
+            v-if="selectedUser"
+            @click="resetUserScore"
+            class="bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 px-3 rounded-lg transition text-xs flex items-center"
+          >
+            🗑 Reset Score
+          </button>
+        </div>
 
         <div v-if="selectedUser" class="flex-1 flex flex-col overflow-hidden">
           <!-- Profile Header -->
-          <div class="flex items-center space-x-4 mb-6">
+          <div class="flex items-center space-x-4 mb-4 flex-shrink-0">
             <img
               :src="
                 selectedUser.avatar_url ||
                 `https://ui-avatars.com/api/?name=${selectedUser.nickname}&background=random`
               "
-              class="w-20 h-20 rounded-full border-4 border-blue-100 shadow-sm object-cover"
+              class="w-16 h-16 rounded-full border-4 border-blue-100 shadow-sm object-cover"
             />
             <div>
-              <h3 class="text-xl font-bold text-gray-900">
-                {{ selectedUser.nickname }}
-              </h3>
-              <p class="text-gray-500 text-sm">
-                ID: {{ selectedUser.user_id }}
-              </p>
-              <div class="mt-2 flex space-x-2">
+              <div class="flex items-center gap-2">
+                <h3 class="text-lg font-bold text-gray-900">
+                  {{ selectedUser.nickname }}
+                </h3>
                 <span
-                  class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-bold"
+                  class="px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-bold"
                 >
                   Score: {{ selectedUser.score }}
                 </span>
               </div>
+              <p class="text-gray-500 text-xs">
+                ID: {{ selectedUser.user_id }}
+              </p>
+              <!-- Used Stats Summary -->
+              <div v-if="selectedUser.used_likes || selectedUser.used_gifts_sent" class="text-[10px] text-gray-400 mt-1">
+                History: {{ selectedUser.used_likes || 0 }} Likes, {{ selectedUser.used_gifts_sent || 0 }} Gifts
+              </div>
             </div>
           </div>
 
-          <!-- Actions -->
-          <div class="mb-4">
-            <button
-              @click="resetUserScore"
-              class="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded-lg transition text-sm"
-            >
-              🗑 Reset Score
-            </button>
-          </div>
-
-          <!-- Gift Breakdown -->
+          <!-- Gift Breakdown (Horizontal Scroll) - Reduced Size -->
           <div
             v-if="giftBreakdown && Object.keys(giftBreakdown).length > 0"
-            class="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200"
+            class="mb-4 bg-yellow-50 p-2 rounded-lg border border-yellow-200 flex-shrink-0"
           >
-            <h4 class="font-bold text-yellow-800 mb-2 text-sm">
-              🎁 Gift Breakdown
+            <h4 class="font-bold text-yellow-800 mb-1 text-[10px]">
+              🎁 Gifts
             </h4>
-            <div class="max-h-32 overflow-y-auto space-y-1">
+            <div class="flex overflow-x-auto space-x-2 pb-1">
               <div
-                v-for="(count, giftName) in giftBreakdown"
-                :key="giftName"
-                class="flex justify-between text-xs text-gray-700"
+                v-for="(gift, name) in giftBreakdown"
+                :key="name"
+                class="flex flex-col items-center bg-white p-1 rounded shadow-sm min-w-[40px] cursor-help border border-yellow-100"
+                :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} diamonds`"
               >
-                <span>{{ giftName }}</span>
-                <span class="font-bold">x{{ count }}</span>
+                <img v-if="gift.icon" :src="gift.icon" class="w-6 h-6 mb-0.5 object-contain" />
+                <span v-else class="text-xs mb-0.5">🎁</span>
+                <span class="font-bold text-[10px] text-gray-800">x{{ gift.count }}</span>
               </div>
             </div>
           </div>
 
           <!-- Comments Section -->
-          <div class="flex-1 overflow-hidden flex flex-col">
-            <h4 class="font-bold text-gray-700 mb-2 flex items-center">
-              <span>💬 Unused Comments</span>
-              <span class="ml-2 text-xs bg-gray-200 px-2 py-0.5 rounded-full">{{
-                userComments.length
-              }}</span>
-            </h4>
-
-            <div class="flex-1 overflow-y-auto space-y-2 pr-1">
-              <div
-                v-for="(comment, idx) in userComments"
-                :key="idx"
-                class="bg-gray-50 p-3 rounded border border-gray-200 group hover:border-blue-300 transition"
-              >
-                <p class="text-sm text-gray-800 mb-2">"{{ comment }}"</p>
-                <button
-                  @click="selectQuestion(comment)"
-                  class="w-full bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-1.5 rounded opacity-0 group-hover:opacity-100 transition"
+          <div class="flex-1 overflow-hidden flex flex-col min-h-0">
+            
+            <!-- Unused Comments (Expanded by default) -->
+            <div class="flex flex-col flex-1 overflow-hidden mb-2">
+                <div 
+                    @click="isUnusedCommentsOpen = !isUnusedCommentsOpen"
+                    class="flex items-center justify-between cursor-pointer bg-gray-100 p-2 rounded-t-lg hover:bg-gray-200 transition"
                 >
-                  Select for Overlay
-                </button>
-              </div>
-              <div
-                v-if="userComments.length === 0"
-                class="text-center text-gray-400 py-4 text-sm italic"
-              >
-                No unused comments found.
-              </div>
+                    <h4 class="font-bold text-gray-700 flex items-center text-sm">
+                        <span>💬 Unused Comments</span>
+                        <span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{{ unusedComments.length }}</span>
+                    </h4>
+                    <span class="text-xs text-gray-500">{{ isUnusedCommentsOpen ? '▼' : '▶' }}</span>
+                </div>
+                
+                <div v-if="isUnusedCommentsOpen" class="flex-1 overflow-y-auto bg-gray-50 border border-t-0 border-gray-200 rounded-b-lg p-2 space-y-2">
+                    <div
+                        v-for="(comment, idx) in unusedComments"
+                        :key="idx"
+                        class="bg-white p-2 rounded border border-gray-200 hover:border-blue-300 transition flex justify-between items-start gap-2"
+                    >
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[10px] text-gray-400 mb-0.5">{{ new Date(comment.timestamp).toLocaleTimeString() }}</div>
+                            <p class="text-sm text-gray-800 break-words">"{{ comment.content }}"</p>
+                        </div>
+                        <button
+                            @click="selectQuestion(comment.content)"
+                            class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2.0 rounded transition"
+                            title="Share to Screen"
+                        >
+                            🛜
+                        </button>
+                    </div>
+                    <div v-if="unusedComments.length === 0" class="text-center text-gray-400 py-4 text-xs italic">
+                        No unused comments.
+                    </div>
+                </div>
             </div>
+
+            <!-- Used Comments (Collapsed by default) -->
+            <div class="flex flex-col flex-shrink-0">
+                <div 
+                    @click="isUsedCommentsOpen = !isUsedCommentsOpen"
+                    class="flex items-center justify-between cursor-pointer bg-gray-100 p-2 rounded-t-lg hover:bg-gray-200 transition"
+                >
+                    <h4 class="font-bold text-gray-600 flex items-center text-sm">
+                        <span>history Used Comments</span>
+                        <span class="ml-2 text-xs bg-gray-200 px-2 py-0.5 rounded-full">{{ usedComments.length }}</span>
+                    </h4>
+                    <span class="text-xs text-gray-500">{{ isUsedCommentsOpen ? '▼' : '▶' }}</span>
+                </div>
+                
+                <div v-if="isUsedCommentsOpen" class="max-h-40 overflow-y-auto bg-gray-50 border border-t-0 border-gray-200 rounded-b-lg p-2 space-y-2">
+                     <div
+                        v-for="(comment, idx) in usedComments"
+                        :key="idx"
+                        class="bg-gray-100 p-2 rounded border border-gray-200 flex justify-between items-start gap-2 opacity-75"
+                    >
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[10px] text-gray-400 mb-0.5">{{ new Date(comment.timestamp).toLocaleTimeString() }}</div>
+                            <p class="text-sm text-gray-600 break-words">"{{ comment.content }}"</p>
+                        </div>
+                        <!-- Re-use button? Optional. -->
+                         <button
+                            @click="selectQuestion(comment.content)"
+                            class="text-gray-400 hover:text-blue-500 hover:bg-gray-200 p-1.5 rounded transition"
+                            title="Re-share"
+                        >
+                            🔄
+                        </button>
+                    </div>
+                    <div v-if="usedComments.length === 0" class="text-center text-gray-400 py-4 text-xs italic">
+                        No used comments history.
+                    </div>
+                </div>
+            </div>
+
           </div>
         </div>
 
@@ -245,17 +317,17 @@
 
     <!-- Bottom Section: Logs -->
     <div
-      class="bg-white rounded-xl shadow-md p-6 flex-1 h-[300px] flex flex-col"
+      class="bg-white rounded-xl shadow-md p-4 flex-1 h-[250px] min-h-[150px] max-h-[150px] flex flex-col"
     >
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-gray-800">📜 System Logs</h2>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-bold text-gray-800">📜 System Logs</h2>
         <!-- Tabs -->
-        <div class="flex space-x-2">
+        <div class="flex space-x-1">
           <button
             v-for="tab in logTabs"
             :key="tab"
             @click="activeTab = tab"
-            class="px-4 py-2 rounded-lg text-sm font-bold transition"
+            class="px-3 py-1 rounded text-xs font-bold transition"
             :class="
               activeTab === tab
                 ? 'bg-gray-800 text-white'
@@ -268,9 +340,9 @@
       </div>
 
       <div
-        class="flex-1 bg-gray-900 rounded-lg p-4 overflow-y-auto font-mono text-sm"
+        class="flex-1 bg-gray-900 rounded-lg p-2 overflow-y-auto font-mono text-xs"
       >
-        <div v-for="(log, index) in filteredLogs" :key="index" class="mb-1">
+        <div v-for="(log, index) in filteredLogs" :key="index" class="mb-0.5">
           <span class="text-gray-500">[{{ log.time }}]</span>
           <span :class="getLogColor(log.type)" class="font-bold mx-2"
             >[{{ log.type }}]</span
@@ -293,7 +365,11 @@ const selectedUser = ref(null);
 const userComments = ref([]);
 const giftBreakdown = ref({});
 const activeTab = ref("All");
-const logTabs = ["All", "System", "Chat", "Gift", "Like"];
+const logTabs = ["All", "System", "Chat", "Gift", "Like"]; // Removed "System"
+
+// UI State for Collapsible Sections
+const isUnusedCommentsOpen = ref(true);
+const isUsedCommentsOpen = ref(false);
 
 // Computed
 const statusColorClass = computed(() => {
@@ -308,8 +384,19 @@ const statusColorClass = computed(() => {
 });
 
 const filteredLogs = computed(() => {
-  if (activeTab.value === "All") return store.logs;
-  return store.logs.filter((log) => log.type === activeTab.value); // Assuming logs have 'type'
+  if (activeTab.value === "All") {
+    return store.logs;
+  }
+  
+  return store.logs.filter((log) => log.type === activeTab.value);
+});
+
+const unusedComments = computed(() => {
+    return userComments.value.filter(c => !c.is_used);
+});
+
+const usedComments = computed(() => {
+    return userComments.value.filter(c => c.is_used);
 });
 
 // Methods
@@ -347,21 +434,30 @@ const selectUser = async (user) => {
     giftBreakdown.value = response.data.gifts_breakdown || {};
     // Update selectedUser with more details if needed
     selectedUser.value = { ...user, ...response.data.stats };
+    
+    // Reset collapsible state when selecting new user
+    isUnusedCommentsOpen.value = true;
+    isUsedCommentsOpen.value = false;
   } catch (error) {
     console.error("Failed to fetch user details", error);
   }
 };
 
-const selectQuestion = async (comment) => {
+const selectQuestion = async (commentText) => {
   if (!selectedUser.value) return;
   try {
     await axios.post("http://localhost:8000/question", {
       user_id: selectedUser.value.user_id,
       nickname: selectedUser.value.nickname,
       avatar_url: selectedUser.value.avatar_url,
-      content: comment,
+      content: commentText,
     });
     alert("Question selected for overlay!");
+    
+    // Optimistically mark as used in UI or re-fetch
+    // For now, let's re-fetch to be safe and sync with DB
+    await selectUser(selectedUser.value);
+    
   } catch (error) {
     console.error("Failed to set question", error);
   }
@@ -377,6 +473,8 @@ const resetUserScore = async () => {
       // Refresh leaderboard
       // store.fetchLeaderboard(); // WebSocket handles this
       alert("User score reset.");
+      // Refresh user details
+      await selectUser(selectedUser.value);
     } catch (error) {
       console.error("Failed to reset user score", error);
     }

@@ -1,5 +1,7 @@
 import redis
 import math
+import json
+from datetime import datetime
 
 
 class ScoringService:
@@ -271,7 +273,7 @@ class ScoringService:
             like_type_key = "likes_as_follower"
         else:
             # 15 likes = 1 point
-            points = like_count / 15.0
+            points = like_count / 10.0
             like_type_key = "likes_as_non_follower"
 
         if points > 0:
@@ -302,6 +304,7 @@ class ScoringService:
         gift_name: str,
         gift_quantity: int,
         avatar_url: str = None,
+        gift_icon: str = None,
     ):
         """
         ประมวลผล Gift
@@ -315,6 +318,7 @@ class ScoringService:
         user_key = self._get_user_key(user_id, user_nickname)
         user_summary_hash_key = f"{self.user_data_key_prefix}:{user_id}"
         user_gifts_hash_key = f"session:{self.session_id}:user_gifts:{user_id}"
+        gift_meta_key = f"session:{self.session_id}:gift_meta"
 
         self.r.zincrby(self.leaderboard_key, points, user_key)
 
@@ -326,8 +330,17 @@ class ScoringService:
         pipe.hincrby(user_summary_hash_key, "total_gifts_sent", gift_quantity)
         pipe.hincrbyfloat(user_summary_hash_key, "points_from_gifts", points)
 
-        gift_field_key = f"{gift_id}|{gift_name}"
-        pipe.hincrby(user_gifts_hash_key, gift_field_key, gift_quantity)
+        # Store User Gift Count (Key = Gift ID)
+        pipe.hincrby(user_gifts_hash_key, gift_id, gift_quantity)
+
+        # Store Gift Metadata (Global for session)
+        meta_data = {
+            "name": gift_name,
+            "diamond_count": coin_value_per_unit,
+            "icon": gift_icon,
+        }
+        pipe.hset(gift_meta_key, gift_id, json.dumps(meta_data))
+
         pipe.execute()
 
     def process_comment(
@@ -338,7 +351,7 @@ class ScoringService:
         avatar_url: str = None,
     ):
         """
-        เก็บ Unique Comment ของ User
+        เก็บ Comment ของ User (JSON with Timestamp)
         """
         comment_key = f"{self.user_comments_key_prefix}:{user_id}"
         user_hash_key = f"{self.user_data_key_prefix}:{user_id}"
@@ -352,32 +365,114 @@ class ScoringService:
                 pipe.hset(user_hash_key, "avatar_url", avatar_url)
             pipe.execute()
 
+        # Create Comment Object
+        comment_obj = {
+            "text": comment_text,
+            "timestamp": datetime.now().isoformat(),
+        }
+
         # RPUSH: Append to list (store all comments)
-        self.r.rpush(comment_key, comment_text)
-        # print(f"💬 Saved comment for {user_id}: {comment_text}")
+        self.r.rpush(comment_key, json.dumps(comment_obj))
 
         # Always increment total comments
         self.r.hincrby(user_hash_key, "total_comments", 1)
+
+    def reset_user_stats(self, user_id: str):
+        """
+        Reset คะแนนและสถิติปัจจุบันของ User โดยย้ายไปเก็บใน 'Used' History
+        """
+        user_hash_key = f"{self.user_data_key_prefix}:{user_id}"
+        user_gifts_hash_key = f"session:{self.session_id}:user_gifts:{user_id}"
+
+        # 1. ดึงข้อมูลปัจจุบัน
+        stats = self.r.hgetall(user_hash_key)
+        current_likes = int(stats.get("total_likes", 0))
+        current_gifts_sent = int(stats.get("total_gifts_sent", 0))
+        current_gift_coins = int(stats.get("total_gift_coins", 0))
+
+        # ดึง Gifts ปัจจุบัน
+        current_gifts_raw = self.r.hgetall(user_gifts_hash_key)
+
+        # 2. Atomic Update
+        pipe = self.r.pipeline()
+
+        # 2.1 เพิ่มเข้า Used Stats
+        pipe.hincrby(user_hash_key, "used_likes", current_likes)
+        pipe.hincrby(user_hash_key, "used_gifts_sent", current_gifts_sent)
+        pipe.hincrby(user_hash_key, "used_gift_coins", current_gift_coins)
+
+        # 2.2 Merge Gifts เข้า Used Gifts Breakdown (ต้องทำแบบ Read-Modify-Write ถ้าจะเก็บละเอียด)
+        # แต่เพื่อความง่ายและ Atomic เราจะเก็บเป็น JSON List ของ "Sessions" หรือแค่รวมยอด
+        # ในที่นี้ขอใช้วิธีเก็บแยกเป็น Key ใหม่สำหรับ Used Gifts ของ User นี้
+        # used_gifts_hash_key = f"session:{self.session_id}:user_used_gifts:{user_id}"
+        # for gid, count in current_gifts_raw.items():
+        #     pipe.hincrby(used_gifts_hash_key, gid, int(count))
+
+        # 2.3 Reset Current Stats
+        pipe.hset(user_hash_key, "total_likes", 0)
+        pipe.hset(user_hash_key, "likes_as_follower", 0)
+        pipe.hset(user_hash_key, "likes_as_non_follower", 0)
+        pipe.hset(user_hash_key, "points_from_likes", 0)
+
+        pipe.hset(user_hash_key, "total_gifts_sent", 0)
+        pipe.hset(user_hash_key, "total_gift_coins", 0)
+        pipe.hset(user_hash_key, "points_from_gifts", 0)
+
+        # 2.4 Reset Gifts Breakdown
+        pipe.delete(user_gifts_hash_key)
+
+        # 2.5 Reset Score in Leaderboard
+        # ต้องหา user_key ก่อน (nickname อาจเปลี่ยนได้ แต่เราจะพยายามหาจาก stats)
+        nickname = stats.get("nickname", "")
+        if nickname:
+            user_key = self._get_user_key(user_id, nickname)
+            pipe.zadd(self.leaderboard_key, {user_key: 0})
+
+        pipe.execute()
 
     # ==================================================================
     # == ส่วนของการ "แสดงผล" (คำนวณจาก ZSET ที่เตรียมไว้แล้ว) ==
     # ==================================================================
 
-    def get_top_5_leaderboard(self) -> list:
+    def get_leaderboard(self) -> list:
         """
-        ดึง Top 5 Leaderboard พร้อมรายละเอียด (Avatar, Stats)
+        ดึง Leaderboard ทั้งหมด พร้อมรายละเอียด (Avatar, Stats, Gift Breakdown)
         """
-        top_5 = self.r.zrevrange(self.leaderboard_key, 0, 4, withscores=True)
+        # Get all users (0 to -1)
+        leaderboard_data = self.r.zrevrange(
+            self.leaderboard_key, 0, -1, withscores=True
+        )
+
+        # Pre-fetch gift metadata
+        gift_meta_key = f"session:{self.session_id}:gift_meta"
+        gift_meta_raw = self.r.hgetall(gift_meta_key)
+        gift_meta_map = {k: json.loads(v) for k, v in gift_meta_raw.items()}
 
         result = []
-        for item in top_5:
+        for item in leaderboard_data:
             user_key = item[0]
-            score = int(item[1])
+            score = math.ceil(item[1])
             user_id, nickname = user_key.split("|", 1)
 
             # Fetch additional stats from Redis Hash
             user_hash_key = f"{self.user_data_key_prefix}:{user_id}"
             stats = self.r.hgetall(user_hash_key)
+
+            # Fetch Gift Breakdown for this user
+            user_gifts_hash_key = f"session:{self.session_id}:user_gifts:{user_id}"
+            user_gifts_raw = self.r.hgetall(user_gifts_hash_key)
+
+            gifts_breakdown = {}
+            for gid, count in user_gifts_raw.items():
+                meta = gift_meta_map.get(
+                    gid, {"name": "Unknown", "diamond_count": 0, "icon": None}
+                )
+                gifts_breakdown[meta["name"]] = {
+                    "id": gid,
+                    "count": int(count),
+                    "diamond_count": meta["diamond_count"],
+                    "icon": meta["icon"],
+                }
 
             result.append(
                 {
@@ -389,6 +484,7 @@ class ScoringService:
                     "comments": int(stats.get("total_comments", 0)),
                     "likes": int(stats.get("total_likes", 0)),
                     "gifts": int(stats.get("total_gifts_sent", 0)),
+                    "gifts_breakdown": gifts_breakdown,
                 }
             )
 
@@ -405,24 +501,39 @@ class ScoringService:
         user_summary_hash_key = f"{self.user_data_key_prefix}:{user_id}"
         comments_key = f"{self.user_comments_key_prefix}:{user_id}"
         user_gifts_hash_key = f"session:{self.session_id}:user_gifts:{user_id}"
+        gift_meta_key = f"session:{self.session_id}:gift_meta"
 
         # 1. ดึงสถิติดิบ (HGETALL)
         stats_raw = self.r.hgetall(user_summary_hash_key)
         stats = {k: v for k, v in stats_raw.items()}
 
-        # 2. ดึง Comments (LRANGE) - Get all comments
+        # 2. ดึง Comments (LRANGE) - Get all comments and parse JSON
         comments_raw = self.r.lrange(comments_key, 0, -1)
-        comments = [c for c in comments_raw]
+        comments = []
+        for c in comments_raw:
+            try:
+                c_obj = json.loads(c)
+                comments.append(c_obj)
+            except json.JSONDecodeError:
+                # Fallback for old string comments
+                comments.append({"text": c, "timestamp": None})
 
-        # 3. ดึงสถิติของขวัญ (HGETALL)
+        # 3. ดึงสถิติของขวัญ (HGETALL) & Metadata
         gifts_raw = self.r.hgetall(user_gifts_hash_key)
-        gifts_breakdown = {}
-        for k, v in gifts_raw.items():
-            key_parts = k.split("|", 1)
-            gift_id = key_parts[0]
-            gift_name = key_parts[1] if len(key_parts) > 1 else "Unknown Gift"
+        gift_meta_raw = self.r.hgetall(gift_meta_key)
+        gift_meta_map = {k: json.loads(v) for k, v in gift_meta_raw.items()}
 
-            gifts_breakdown[gift_name] = {"id": gift_id, "count": int(v)}
+        gifts_breakdown = {}
+        for gid, count in gifts_raw.items():
+            meta = gift_meta_map.get(
+                gid, {"name": "Unknown", "diamond_count": 0, "icon": None}
+            )
+            gifts_breakdown[meta["name"]] = {
+                "id": gid,
+                "count": int(count),
+                "diamond_count": meta["diamond_count"],
+                "icon": meta["icon"],
+            }
 
         return {
             "stats": stats,

@@ -93,22 +93,53 @@ class TikTokLiveAdapter:
 
     async def on_like(self, event: LikeEvent):
         try:
-            # Persist User
-            avatar_thumb = event.user.avatar_thumb
+            # CRITICAL: Do not access event.user directly, it raises TypeError in this version.
+            # Use event.user_info or event.sender if available.
+            user = getattr(event, "user_info", getattr(event, "user", None))
+            if not user:
+                # Fallback for some versions
+                user = getattr(event, "sender", None)
+
+            if not user:
+                await self.logging_service.warning(
+                    "LikeEvent received without user info"
+                )
+                return
+
+            # Robust Attribute Access
+            # unique_id is often 'username' in ExtendedUser
+            unique_id = getattr(user, "unique_id", getattr(user, "username", None))
+            # nickname is often 'nick_name' in ExtendedUser
+            nickname = getattr(user, "nickname", getattr(user, "nick_name", None))
+
+            if not unique_id or not nickname:
+                await self.logging_service.warning(
+                    f"Incomplete user info in LikeEvent: {unique_id}, {nickname}"
+                )
+                return
+
+            # Avatar Extraction
+            avatar_thumb = getattr(user, "avatar_thumb", None)
             avatar_url = None
-            if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
-                avatar_url = avatar_thumb.m_urls[0]
+            if avatar_thumb:
+                if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
+                    avatar_url = avatar_thumb.m_urls[0]
+                elif hasattr(avatar_thumb, "url_list") and avatar_thumb.url_list:
+                    avatar_url = avatar_thumb.url_list[0]
+                elif hasattr(avatar_thumb, "urls") and avatar_thumb.urls:
+                    avatar_url = avatar_thumb.urls[0]
 
-            await self.data_service.upsert_user(
-                event.user.unique_id, event.user.nickname, avatar_url
-            )
+            await self.data_service.upsert_user(unique_id, nickname, avatar_url)
 
-            # Logic from capture_live.py
+            # Follower Status
             is_follower = False
+            follow_info = getattr(user, "follow_info", None)
+            if follow_info and hasattr(follow_info, "follow_status"):
+                is_follower = follow_info.follow_status == 1
 
             self.scoring_service.process_like(
-                event.user.unique_id,
-                event.user.nickname,
+                unique_id,
+                nickname,
                 event.count,
                 is_follower,
                 avatar_url=avatar_url,
@@ -116,28 +147,52 @@ class TikTokLiveAdapter:
 
             # Log for Admin Dashboard
             await self.logging_service.info(
-                f"{event.user.nickname} sent {event.count} likes",
+                f"{nickname} sent {event.count} likes",
                 details={"type": "Like"},
             )
         except Exception as e:
-            await self.log_ingestion_error(
-                e, {"type": "Like", "user": event.user.unique_id}
-            )
+            # Do NOT access event.user in error handling either
+            await self.log_ingestion_error(e, {"type": "Like", "data": str(event)})
             asyncio.create_task(
                 self.logging_service.error(f"Error processing like: {e}", e)
             )
 
     async def on_gift(self, event: GiftEvent):
         try:
-            # Persist User & Gift
-            avatar_thumb = event.user.avatar_thumb
-            avatar_url = None
-            if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
-                avatar_url = avatar_thumb.m_urls[0]
-
-            await self.data_service.upsert_user(
-                event.user.unique_id, event.user.nickname, avatar_url
+            # Robust User Extraction
+            user = getattr(
+                event,
+                "user",
+                getattr(event, "user_info", getattr(event, "sender", None)),
             )
+
+            if not user:
+                await self.logging_service.warning(
+                    "GiftEvent received without user info"
+                )
+                return
+
+            unique_id = getattr(user, "unique_id", getattr(user, "username", None))
+            nickname = getattr(user, "nickname", getattr(user, "nick_name", None))
+
+            if not unique_id or not nickname:
+                await self.logging_service.warning(
+                    f"Incomplete user info in GiftEvent: {unique_id}, {nickname}"
+                )
+                return
+
+            # Persist User & Gift
+            avatar_thumb = getattr(user, "avatar_thumb", None)
+            avatar_url = None
+            if avatar_thumb:
+                if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
+                    avatar_url = avatar_thumb.m_urls[0]
+                elif hasattr(avatar_thumb, "url_list") and avatar_thumb.url_list:
+                    avatar_url = avatar_thumb.url_list[0]
+                elif hasattr(avatar_thumb, "urls") and avatar_thumb.urls:
+                    avatar_url = avatar_thumb.urls[0]
+
+            await self.data_service.upsert_user(unique_id, nickname, avatar_url)
 
             gift_icon = event.gift.icon
             gift_image = gift_icon.m_urls[0]
@@ -154,35 +209,37 @@ class TikTokLiveAdapter:
             if event.gift.streakable and not event.streaking:
                 # End of streak or single gift
                 self.scoring_service.process_gift(
-                    event.user.unique_id,
-                    event.user.nickname,
+                    unique_id,
+                    nickname,
                     event.gift.diamond_count,
                     str(event.gift.id),
                     event.gift.name,
                     event.repeat_count,
                     avatar_url=avatar_url,
+                    gift_icon=gift_image,
                 )
             elif not event.gift.streakable:
                 # Non-streakable
                 self.scoring_service.process_gift(
-                    event.user.unique_id,
-                    event.user.nickname,
+                    unique_id,
+                    nickname,
                     event.gift.diamond_count,
                     str(event.gift.id),
                     event.gift.name,
                     1,
                     avatar_url=avatar_url,
+                    gift_icon=gift_image,
                 )
 
             # Log for Admin Dashboard
             await self.logging_service.info(
-                f"{event.user.nickname} sent {event.gift.name} x{event.repeat_count}",
+                f"{nickname} sent {event.gift.name} x{event.repeat_count}",
                 details={"type": "Gift"},
             )
         except Exception as e:
             await self.log_ingestion_error(
                 e,
-                {"type": "Gift", "user": event.user.unique_id, "gift": event.gift.name},
+                {"type": "Gift", "data": str(event)},
             )
             asyncio.create_task(
                 self.logging_service.error(f"Error processing gift: {e}", e)
@@ -190,38 +247,64 @@ class TikTokLiveAdapter:
 
     async def on_comment(self, event: CommentEvent):
         try:
-            # Persist User & Comment
-            avatar_thumb = event.user_info.avatar_thumb
-            avatar_url = None
-            if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
-                avatar_url = avatar_thumb.m_urls[0]
+            # CRITICAL: Do not access event.user directly, it raises TypeError.
+            # CommentEvent uses event.user_info.
+            user = getattr(event, "user_info", None)
+            if not user:
+                # Try fallback but event.user is known to fail
+                user = getattr(event, "user", None)
 
-            await self.data_service.upsert_user(
-                event.user.unique_id, event.user.nickname, avatar_url
-            )
+            if not user:
+                await self.logging_service.warning(
+                    "CommentEvent received without user info"
+                )
+                return
+
+            # Robust Attribute Access
+            unique_id = getattr(user, "unique_id", getattr(user, "username", None))
+            nickname = getattr(user, "nickname", getattr(user, "nick_name", None))
+
+            if not unique_id or not nickname:
+                await self.logging_service.warning(
+                    f"Incomplete user info in CommentEvent: {unique_id}, {nickname}"
+                )
+                return
+
+            # Avatar Extraction
+            avatar_thumb = getattr(user, "avatar_thumb", None)
+            avatar_url = None
+            if avatar_thumb:
+                if hasattr(avatar_thumb, "m_urls") and avatar_thumb.m_urls:
+                    avatar_url = avatar_thumb.m_urls[0]
+                elif hasattr(avatar_thumb, "url_list") and avatar_thumb.url_list:
+                    avatar_url = avatar_thumb.url_list[0]
+                elif hasattr(avatar_thumb, "urls") and avatar_thumb.urls:
+                    avatar_url = avatar_thumb.urls[0]
+
+            await self.data_service.upsert_user(unique_id, nickname, avatar_url)
             await self.data_service.save_comment(
-                event.user.unique_id, self.session_id, event.comment
+                unique_id, self.session_id, event.comment
             )
 
             self.scoring_service.process_comment(
-                event.user.unique_id,
+                unique_id,
                 event.comment,
-                user_nickname=event.user.nickname,
+                user_nickname=nickname,
                 avatar_url=avatar_url,
             )
 
             # Log for Admin Dashboard
             await self.logging_service.info(
-                f"{event.user.nickname}: {event.comment}", details={"type": "Chat"}
+                f"{nickname}: {event.comment}", details={"type": "Chat"}
             )
         except Exception as e:
+            # Do NOT access event.user in error handling
             await self.log_ingestion_error(
                 e,
                 {
                     "type": "Comment",
-                    "user": event.user.unique_id,
                     "comment": event.comment,
-                    "data": event,
+                    "data": str(event),
                 },
             )
             asyncio.create_task(

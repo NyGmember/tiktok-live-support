@@ -199,7 +199,7 @@ class GameManager:
     def get_leaderboard(self):
         if not self.scoring_service:
             return []
-        return self.scoring_service.get_top_5_leaderboard()
+        return self.scoring_service.get_leaderboard()
 
     def select_winner(self):
         if not self.scoring_service:
@@ -207,7 +207,7 @@ class GameManager:
 
         self.is_scoring_active = False
 
-        top_list = self.scoring_service.get_top_5_leaderboard()
+        top_list = self.scoring_service.get_leaderboard()
         if not top_list:
             return None
 
@@ -264,14 +264,16 @@ class GameManager:
         if not self.scoring_service:
             return
 
-        # For now, let's just mark comments as used in DB
+        # 1. Reset Redis Stats (Move to Used)
+        self.scoring_service.reset_user_stats(user_id)
+
+        # 2. Mark comments as used in DB
         db_comments = await self.data_service.get_user_comments(
             user_id, self.current_session_id
         )
         for comment in db_comments:
             await self.data_service.mark_comment_as_used(comment.id)
 
-        # TODO: Reset Redis score properly
         self.add_log("INFO", f"Reset score for user {user_id}", "System")
 
         return {"status": "reset"}

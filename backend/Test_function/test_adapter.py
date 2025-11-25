@@ -64,9 +64,10 @@ class MockScoringService:
         gift_name,
         repeat_count,
         avatar_url=None,
+        gift_icon=None,
     ):
         logger.info(
-            f"[Gift] | user={unique_id} | gift={gift_name} x {repeat_count} | diamonds={diamond_count} | avatar={avatar_url[-8:]}"
+            f"[Gift] | user={unique_id} | gift={gift_name} x {repeat_count} | diamonds={diamond_count} | avatar={avatar_url[-8:]} | icon={gift_icon}"
         )
 
     def process_comment(self, unique_id, comment, user_nickname=None, avatar_url=None):
@@ -76,7 +77,7 @@ class MockScoringService:
 
 
 async def main():
-    unique_id = "@juneang2004"
+    unique_id = "@rokungx"
     if not unique_id:
         print("Username is required.")
         return

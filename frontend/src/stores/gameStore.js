@@ -151,7 +151,6 @@ export const useGameStore = defineStore('game', () => {
             type,
             message
         })
-        if (logs.value.length > 100) logs.value.pop()
     }
 
     return {
