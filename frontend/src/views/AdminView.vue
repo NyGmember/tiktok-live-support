@@ -419,6 +419,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useGameStore } from "../stores/gameStore";
 import axios from "axios";
+import { config } from "../config";
 
 const store = useGameStore();
 const tiktokUsername = ref("");
@@ -504,7 +505,7 @@ const startStream = async () => {
 
 const fetchRecentSessions = async () => {
     try {
-        const res = await axios.get("http://localhost:8000/sessions/history");
+        const res = await axios.get(`${config.apiUrl}/sessions/history`);
         recentSessions.value = res.data;
     } catch (e) {
         console.error("Failed to fetch sessions", e);
@@ -513,7 +514,7 @@ const fetchRecentSessions = async () => {
 
 const fetchLastChannel = async () => {
     try {
-        const res = await axios.get("http://localhost:8000/channel/last");
+        const res = await axios.get(`${config.apiUrl}/channel/last`);
         if (res.data.channel_name) {
             tiktokUsername.value = res.data.channel_name;
         }
@@ -553,7 +554,7 @@ const selectUser = async (user) => {
   // Fetch detailed info including comments
   try {
     const response = await axios.get(
-      `http://localhost:8000/user/${user.user_id}`
+      `${config.apiUrl}/user/${user.user_id}`
     );
     // Assuming response.data contains { stats: {}, comments: [], gifts_breakdown: {} }
     userComments.value = response.data.comments || [];
@@ -572,7 +573,7 @@ const selectUser = async (user) => {
 const selectQuestion = async (comment) => {
   if (!selectedUser.value) return;
   try {
-    await axios.post("http://localhost:8000/question", {
+    await axios.post(`${config.apiUrl}/question`, {
       user_id: selectedUser.value.user_id,
       nickname: selectedUser.value.nickname,
       avatar_url: selectedUser.value.avatar_url,
@@ -594,7 +595,7 @@ const unuseComment = async (comment) => {
   if (!selectedUser.value) return;
   try {
     await axios.post(
-      `http://localhost:8000/comment/${comment.id}/unuse?user_id=${selectedUser.value.user_id}`
+      `${config.apiUrl}/comment/${comment.id}/unuse?user_id=${selectedUser.value.user_id}`
     );
     showToast("Comment restored to unused.");
     await selectUser(selectedUser.value);
@@ -608,7 +609,7 @@ const resetUserScore = async () => {
   if (confirm(`Reset score for ${selectedUser.value.nickname}?`)) {
     try {
       await axios.post(
-        `http://localhost:8000/user/${selectedUser.value.user_id}/reset`
+        `${config.apiUrl}/user/${selectedUser.value.user_id}/reset`
       );
       // Refresh leaderboard
       // store.fetchLeaderboard(); // WebSocket handles this

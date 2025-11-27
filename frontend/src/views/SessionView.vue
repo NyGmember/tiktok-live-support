@@ -171,6 +171,7 @@
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
+import { config } from '../config';
 
 const router = useRouter();
 const allSessions = ref([]);
@@ -187,7 +188,7 @@ const sortedUsers = computed(() => {
 
 const fetchSessions = async () => {
     try {
-        const res = await axios.get("http://localhost:8000/sessions/history");
+        const res = await axios.get(`${config.apiUrl}/sessions/history`);
         allSessions.value = res.data;
         
         if (allSessions.value.length > 0) {
@@ -203,7 +204,7 @@ const selectSession = async (session) => {
     selectedUser.value = null;
     userDetails.value = null;
     try {
-        const res = await axios.get(`http://localhost:8000/sessions/${session.id}`);
+        const res = await axios.get(`${config.apiUrl}/sessions/${session.id}`);
         sessionDetails.value = res.data;
     } catch (e) {
         console.error("Failed to fetch session details", e);
@@ -214,7 +215,7 @@ const selectUser = async (user) => {
     selectedUser.value = user;
     userDetails.value = null; // Clear previous details
     try {
-        const res = await axios.get(`http://localhost:8000/sessions/${selectedSession.value.id}/users/${user.user_id}`);
+        const res = await axios.get(`${config.apiUrl}/sessions/${selectedSession.value.id}/users/${user.user_id}`);
         userDetails.value = res.data;
     } catch (e) {
         console.error("Failed to fetch user details", e);

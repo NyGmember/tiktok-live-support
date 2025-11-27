@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { config } from '../config'
 
 export const useGameStore = defineStore('game', () => {
     // State
@@ -16,7 +17,7 @@ export const useGameStore = defineStore('game', () => {
     // Actions
     async function fetchStatus() {
         try {
-            const res = await fetch('http://localhost:8000/status')
+            const res = await fetch(`${config.apiUrl}/status`)
             const data = await res.json()
             connectionStatus.value = data.is_connected ? 'connected' : 'disconnected'
             isPaused.value = data.is_paused
@@ -31,7 +32,7 @@ export const useGameStore = defineStore('game', () => {
     function connectWebSocket() {
         if (ws.value) return
 
-        ws.value = new WebSocket('ws://localhost:8000/ws')
+        ws.value = new WebSocket(config.wsUrl)
 
         ws.value.onopen = () => {
             addLog('INFO', 'WebSocket connected')
@@ -71,7 +72,7 @@ export const useGameStore = defineStore('game', () => {
     async function startStream(username, mode = 'live') {
         isLoading.value = true
         try {
-            const res = await fetch('http://localhost:8000/stream/start', {
+            const res = await fetch(`${config.apiUrl}/stream/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tiktok_username: username, mode })
@@ -90,7 +91,7 @@ export const useGameStore = defineStore('game', () => {
 
     async function stopStream() {
         try {
-            const res = await fetch('http://localhost:8000/stream/stop', {
+            const res = await fetch(`${config.apiUrl}/stream/stop`, {
                 method: 'POST'
             })
             const data = await res.json()
@@ -105,7 +106,7 @@ export const useGameStore = defineStore('game', () => {
 
     async function pauseStream() {
         try {
-            await fetch('http://localhost:8000/stream/pause', { method: 'POST' })
+            await fetch(`${config.apiUrl}/stream/pause`, { method: 'POST' })
             isPaused.value = true
             addLog('INFO', 'Stream paused')
         } catch (e) {
@@ -115,7 +116,7 @@ export const useGameStore = defineStore('game', () => {
 
     async function resumeStream() {
         try {
-            await fetch('http://localhost:8000/stream/resume', { method: 'POST' })
+            await fetch(`${config.apiUrl}/stream/resume`, { method: 'POST' })
             isPaused.value = false
             addLog('INFO', 'Stream resumed')
         } catch (e) {
@@ -125,7 +126,7 @@ export const useGameStore = defineStore('game', () => {
 
     async function setSession(sessionId, resetScores = false) {
         try {
-            const res = await fetch('http://localhost:8000/session/set', {
+            const res = await fetch(`${config.apiUrl}/session/set`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId, reset_scores: resetScores })

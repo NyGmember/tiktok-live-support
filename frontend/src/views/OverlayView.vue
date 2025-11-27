@@ -70,6 +70,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from "vue";
+import { config } from "../config";
 
 const leaderboard = ref([]);
 let ws = null;
@@ -91,7 +92,7 @@ const top5Users = computed(() => {
 });
 
 const connectWebSocket = () => {
-  ws = new WebSocket("ws://localhost:8000/ws");
+  ws = new WebSocket(config.wsUrl);
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);

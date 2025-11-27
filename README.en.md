@@ -12,28 +12,10 @@ A system for capturing TikTok Live events (Comments, Likes, Gifts), calculating 
 
 ## 🛠 Installation
 
-Using Docker Compose is recommended for the easiest setup.
+```bash
+pip install -r requirements.txt
+```
 
-### Method 1: Docker Compose (Recommended)
-
-1. Ensure you have [Docker](https://www.docker.com/) and Docker Compose installed.
-2. Clone this repository.
-3. Create a `.env` file in the root directory (refer to `.env.example` or create a new one).
-4. Run the command:
-   ```bash
-   docker-compose up -d --build
-   ```
-
-### Method 2: Manual Installation
-
-**Backend:**
-
-1. Navigate to the `backend` folder.
-2. Create and activate a Virtual Environment.
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
 4. Ensure Redis and PostgreSQL services are running.
 
 **Frontend:**

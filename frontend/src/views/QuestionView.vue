@@ -41,12 +41,13 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue";
+import { config } from "../config";
 
 const question = ref(null);
 let ws = null;
 
 const connectWebSocket = () => {
-  ws = new WebSocket("ws://localhost:8000/ws");
+  ws = new WebSocket(config.wsUrl);
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
