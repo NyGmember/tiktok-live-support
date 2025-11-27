@@ -2,6 +2,7 @@
 .DS_Store
 Thumbs.db
 *.log
+.gemini
 
 # Python
 __pycache__/
