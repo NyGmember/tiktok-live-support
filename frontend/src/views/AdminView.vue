@@ -66,22 +66,22 @@
                 </div>
             </div>
 
-            <label class="block text-sm font-medium text-gray-700 mb-1"
-              >TikTok Username (@)</label
-            >
-            <input
-              v-model="tiktokUsername"
-              type="text"
-              class="w-full p-2 border rounded-lg mb-2"
-              placeholder="username"
-            />
+            <div v-if="selectedSessionId === 'new'">
+                <label class="block text-sm font-medium text-gray-700 mb-1">TikTok Username (@)</label>
+                <input
+                v-model="tiktokUsername"
+                type="text"
+                class="w-full p-2 border rounded-lg mb-2"
+                placeholder="username"
+                />
+            </div>
             <button
               @click="startStream"
               class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition shadow-lg flex items-center justify-center"
               :disabled="store.isLoading"
             >
               <span v-if="store.isLoading" class="animate-spin mr-2">⏳</span>
-              Start Stream
+              {{ selectedSessionId === 'new' ? 'Start Stream' : 'Resume Stream' }}
             </button>
           </div>
 
@@ -494,10 +494,8 @@ const startStream = async () => {
   
   // If resuming, set session first
   if (selectedSessionId.value !== 'new') {
-      await store.setSession(selectedSessionId.value);
+      await store.setSession(selectedSessionId.value, false);
   } else {
-      // New session will be created by backend if not set, 
-      // but we should probably explicitly set it to "new" to trigger UUID generation
       await store.setSession("new"); 
   }
   

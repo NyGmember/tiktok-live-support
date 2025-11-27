@@ -402,6 +402,30 @@ class GameManager:
 
         return {"info": session_info, "leaderboard": leaderboard}
 
+    async def get_session_user_details(self, session_id: str, user_id: str):
+        """Get detailed stats for a user in a specific session"""
+        # Re-use ScoringService logic but with a specific session_id
+        temp_scoring = ScoringService(self.redis, session_id)
+        stats = temp_scoring.get_user_stats_and_comments(user_id)
+
+        # Get detailed comments from DB (via DataService)
+        db_comments = await self.data_service.get_user_comments(user_id, session_id)
+
+        return {
+            "user_id": user_id,
+            "stats": stats.get("stats", {}),
+            "comments": [
+                {
+                    "id": c.id,
+                    "content": c.content,
+                    "timestamp": c.timestamp.isoformat(),
+                    "is_used": c.is_used,
+                }
+                for c in db_comments
+            ],
+            "gifts_breakdown": stats.get("gifts_breakdown", {}),
+        }
+
     def get_last_channel_name(self):
         return self.redis.get("last_channel_name") or ""
 

@@ -27,7 +27,7 @@ async def init_db():
     async with engine.begin() as conn:
         # For dev environment: Drop all tables to ensure schema update
         # WARNING: This deletes all data!
-        await conn.run_sync(Base.metadata.drop_all)
+        # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
 

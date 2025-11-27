@@ -29,7 +29,7 @@
             <!-- Rank / Avatar Section -->
             <div class="relative mr-3">
                 <!-- Crown for 1st Place -->
-                <div v-if="index === 0" class="absolute -top-4 -left-2 text-2xl z-20 filter drop-shadow-md animate-bounce-slow">
+                <div v-if="index === 0" class="absolute -top-4 -left-2 text-4xl z-20 filter drop-shadow-md animate-bounce-slow">
                     👑
                 </div>
                 

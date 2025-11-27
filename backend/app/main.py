@@ -63,12 +63,14 @@ async def get_session_details(session_id: str):
     return await game_manager.get_session_details(session_id)
 
 
+@app.get("/sessions/{session_id}/users/{user_id}")
+async def get_session_user_details(session_id: str, user_id: str):
+    return await game_manager.get_session_user_details(session_id, user_id)
+
+
 @app.get("/channel/last")
 def get_last_channel():
     return {"channel_name": game_manager.get_last_channel_name()}
-
-
-# --- 2. Control System (Start/Stop Live) ---
 
 
 class StreamRequest(BaseModel):
