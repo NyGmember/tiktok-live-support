@@ -88,7 +88,7 @@ Designed for OBS with a Green Screen background for Chroma Key.
 - Animations for rank changes.
 - Crown 👑 icon for the 1st place (rotated 30 degrees).
 
-![Leaderboard Overlay](snapshot/2gf1ai2gf1ai2gf1.png)
+![Leaderboard Overlay](<snapshot/ck6219ck6219ck62%20(2).png>)
 
 ### 3. Question Overlay
 
@@ -109,7 +109,7 @@ View past live sessions.
 - View details of each session (Participant list, Total stats).
 - Resume button ▶️ to continue an old session.
 
-![Session History](<snapshot/ck6219ck6219ck62%20(2).png>)
+![Session History](snapshot/2gf1ai2gf1ai2gf1.png)
 
 ## ⚙️ Configuration
 
