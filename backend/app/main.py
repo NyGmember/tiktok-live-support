@@ -169,6 +169,7 @@ def get_status():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    last_log_id = 0
     try:
         while True:
             # Check if client disconnected
@@ -177,7 +178,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
             data = game_manager.get_leaderboard()
             question = game_manager.get_current_question()
-            logs = game_manager.get_and_clear_logs()
+            logs = game_manager.get_logs(after_id=last_log_id)
+
+            if logs:
+                last_log_id = logs[-1]["id"]
 
             await websocket.send_json(
                 {

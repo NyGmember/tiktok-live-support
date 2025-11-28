@@ -1,17 +1,17 @@
 <template>
   <div class="w-screen h-screen bg-[#00FF00] overflow-hidden p-8 flex flex-col items-start">
     <!-- Header -->
-    <div class="mb-4 bg-white/90 backdrop-blur-sm rounded-xl p-4 shadow-lg border-l-4 border-blue-500 w-[350px]">
-      <h1 class="text-2xl font-black text-gray-800 uppercase tracking-wider italic">
+    <div class="mb-4 bg-white backdrop-blur-sm rounded-xl p-4 shadow-lg border-l-4 border-blue-500 w-[250px]">
+      <h1 class="text-xl font-black text-gray-800 uppercase tracking-wider italic">
         🏆 Leaderboard
       </h1>
       <div class="text-sm text-gray-600 font-bold mt-1">
-        Active Players: <span class="text-blue-600 text-lg">{{ activeUserCount }}</span>
+        Users: <span class="text-blue-600 text-lg">{{ activeUserCount[0] }}</span><span class="text-blue-400 text-md"> / {{ activeUserCount[1] }}</span>
       </div>
     </div>
 
     <!-- Leaderboard List -->
-    <div class="w-[350px] relative">
+    <div class="w-[250px] relative">
       <TransitionGroup name="list" tag="div" class="flex flex-col gap-2">
         <div
           v-for="(user, index) in top5Users"
@@ -19,17 +19,17 @@
           class="relative transform transition-all duration-500"
         >
           <div
-            class="flex items-center p-2 rounded-xl shadow-lg backdrop-blur-md border-2 bg-white/50"
+            class="flex items-center p-2 rounded-xl shadow-lg backdrop-blur-md border-2 bg-white"
             :class="[
               index === 0 ? 'border-yellow-400 ring-2 ring-yellow-200' : 
-              index === 1 ? 'ring-yellow-200' : 
+              index === 1 ? 'border-yellow-200' : 
               index === 2 ? 'border-orange-400' : 'border-blue-100'
             ]"
           >
             <!-- Rank / Avatar Section -->
             <div class="relative mr-3">
                 <!-- Crown for 1st Place -->
-                <div v-if="index === 0" class="absolute -top-4 -left-2 text-4xl z-20 filter drop-shadow-md animate-bounce-slow">
+                <div v-if="index === 0" class="absolute -top-4 -right-2 text-2xl z-20 filter drop-shadow-md animate-bounce-slow transform rotate-[30deg]">
                     👑
                 </div>
                 
@@ -59,7 +59,10 @@
                 <h3 class="font-bold text-gray-900 truncate text-sm mr-2">
                   {{ user.nickname }}
                 </h3>
-                <span class="font-black text-blue-800 text-lg whitespace-nowrap">{{ user.score }}</span>
+                <span class="font-black text-blue-800 text-lg whitespace-nowrap">
+                  <span v-if="user.score > 0">{{ user.score }}</span>
+                  <span v-else>-</span>
+                </span>
             </div>
           </div>
         </div>
@@ -76,7 +79,7 @@ const leaderboard = ref([]);
 let ws = null;
 
 const activeUserCount = computed(() => {
-    return leaderboard.value.filter(u => u.score > 0).length;
+    return [leaderboard.value.filter(u => u.score > 0).length, leaderboard.value.length];
 });
 
 const top5Users = computed(() => {

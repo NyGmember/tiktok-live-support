@@ -10,24 +10,33 @@ const router = createRouter({
     {
       path: '/',
       name: 'admin',
-      component: AdminView
+      component: AdminView,
+      meta: { title: 'Admin Control' }
     },
     {
       path: '/overlay',
       name: 'overlay',
-      component: OverlayView
+      component: OverlayView,
+      meta: { title: 'Leaderboard Overlay' }
     },
     {
       path: '/question',
       name: 'question',
-      component: QuestionView
+      component: QuestionView,
+      meta: { title: 'Question Overlay' }
     },
     {
       path: '/sessions',
       name: 'sessions',
-      component: SessionView
+      component: SessionView,
+      meta: { title: 'Session Review' }
     }
   ]
+})
+
+router.beforeEach((to, from, next) => {
+  document.title = to.meta.title || 'TikTok Live Support'
+  next()
 })
 
 export default router

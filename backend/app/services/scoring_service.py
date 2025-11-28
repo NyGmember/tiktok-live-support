@@ -383,6 +383,11 @@ class ScoringService:
                 pipe.hset(user_hash_key, "avatar_url", avatar_url)
             pipe.execute()
 
+        # Ensure user is in leaderboard (with 0 score if new)
+        if user_nickname:
+            user_key = self._get_user_key(user_id, user_nickname)
+            self.r.zincrby(self.leaderboard_key, 0, user_key)
+
         # Create Comment Object
         comment_obj = {
             "text": comment_text,
@@ -408,6 +413,10 @@ class ScoringService:
         current_gifts_sent = int(stats.get("total_gifts_sent", 0))
         current_gift_coins = int(stats.get("total_gift_coins", 0))
 
+        current_points_likes = float(stats.get("points_from_likes", 0))
+        current_points_gifts = float(stats.get("points_from_gifts", 0))
+        current_total_points = current_points_likes + current_points_gifts
+
         # ดึง Gifts ปัจจุบัน
         current_gifts_raw = self.r.hgetall(user_gifts_hash_key)
 
@@ -418,6 +427,8 @@ class ScoringService:
         pipe.hincrby(user_hash_key, "used_likes", current_likes)
         pipe.hincrby(user_hash_key, "used_gifts_sent", current_gifts_sent)
         pipe.hincrby(user_hash_key, "used_gift_coins", current_gift_coins)
+        pipe.hincrbyfloat(user_hash_key, "used_points", current_total_points)
+
         # Reset used comments count for new session/round
         pipe.hset(user_hash_key, "used_comments_count", 0)
 
@@ -504,8 +515,6 @@ class ScoringService:
                     "nickname": stats.get("nickname", nickname),
                     "score": score,
                     "avatar_url": stats.get("avatar_url", ""),
-                    "score": score,
-                    "avatar_url": stats.get("avatar_url", ""),
                     "comments": int(stats.get("total_comments", 0))
                     - int(stats.get("used_comments_count", 0)),
                     "likes": int(stats.get("total_likes", 0)),
@@ -560,6 +569,27 @@ class ScoringService:
                 "diamond_count": meta["diamond_count"],
                 "icon": meta["icon"],
             }
+
+        # 4. Compute Grand Totals (Current + Used)
+        total_likes = int(stats.get("total_likes", 0)) + int(stats.get("used_likes", 0))
+        total_gifts = int(stats.get("total_gifts_sent", 0)) + int(
+            stats.get("used_gifts_sent", 0)
+        )
+
+        # Score: Current Points + Used Points
+        current_points = float(stats.get("points_from_likes", 0)) + float(
+            stats.get("points_from_gifts", 0)
+        )
+        total_score = current_points + float(stats.get("used_points", 0))
+
+        # Comments: Just count the list (since we don't clear the list)
+        total_comments = len(comments)
+
+        # Inject computed totals into stats
+        stats["grand_total_likes"] = total_likes
+        stats["grand_total_gifts"] = total_gifts
+        stats["grand_total_score"] = math.ceil(total_score)
+        stats["grand_total_comments"] = total_comments
 
         return {
             "stats": stats,

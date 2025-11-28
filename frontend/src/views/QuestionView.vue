@@ -2,8 +2,8 @@
   <div
     class="w-screen h-screen bg-[#00FF00] flex items-start justify-end overflow-hidden p-10"
   >
-    <transition name="pop">
-      <div v-if="question" class="relative max-w-sm w-full">
+    <transition name="pop" mode="out-in">
+      <div v-if="question" :key="question.timestamp" class="relative max-w-sm w-full">
         <!-- Speech Bubble Frame -->
         <div
           class="bg-white rounded-2xl shadow-xl border-4 border-blue-500 p-4 relative"

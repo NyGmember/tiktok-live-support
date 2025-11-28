@@ -4,7 +4,7 @@
     <transition name="fade">
       <div
         v-if="toast.show"
-        class="fixed top-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-[9999] flex items-center gap-2"
+        class="fixed bottom-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-[9999] flex items-center gap-2"
       >
         <span>{{ toast.message }}</span>
       </div>
@@ -194,7 +194,7 @@
                   v-for="(gift, name) in user.gifts_breakdown"
                   :key="name"
                   class="flex items-center bg-gray-100 rounded px-1 py-0.5 text-[10px] whitespace-nowrap"
-                  :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} diamonds`"
+                  :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} Coins`"
                 >
                   <img v-if="gift.icon" :src="gift.icon" class="w-3 h-3 mr-1" />
                   <span v-else>🎁</span>
@@ -263,7 +263,7 @@
                 v-for="(gift, name) in giftBreakdown"
                 :key="name"
                 class="flex flex-col items-center bg-white p-1 rounded shadow-sm min-w-[40px] cursor-help border border-yellow-100"
-                :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} diamonds`"
+                :title="`${name} (ID: ${gift.id}) - ${gift.diamond_count} Coins`"
               >
                 <img v-if="gift.icon" :src="gift.icon" class="w-6 h-6 mb-0.5 object-contain" />
                 <span v-else class="text-xs mb-0.5">🎁</span>
@@ -412,6 +412,19 @@
         </div>
       </div>
     </div>
+
+    <!-- Footer -->
+    <footer class="mt-auto text-center text-xs text-gray-400 py-4">
+      <p>
+        &copy; 2024 Acetamenophen Jee |
+        <a
+          href="https://github.com/NyGmember/tiktok-live-support"
+          target="_blank"
+          class="text-blue-400 hover:underline"
+          >GitHub</a
+        >
+      </p>
+    </footer>
   </div>
 </template>
 
@@ -611,11 +624,22 @@ const resetUserScore = async () => {
       await axios.post(
         `${config.apiUrl}/user/${selectedUser.value.user_id}/reset`
       );
-      // Refresh leaderboard
-      // store.fetchLeaderboard(); // WebSocket handles this
       showToast("User score reset.");
+      
       // Clear user details
       selectedUser.value = null;
+
+      // Auto-select next top user when leaderboard updates
+      const unwatch = watch(
+        () => store.leaderboard,
+        (newVal) => {
+            if (newVal.length > 0) {
+                selectUser(newVal[0]);
+            }
+            unwatch();
+        }
+      );
+
     } catch (error) {
       console.error("Failed to reset user score", error);
     }

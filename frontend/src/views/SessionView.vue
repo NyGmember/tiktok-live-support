@@ -25,7 +25,7 @@
                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">End Time</th>
                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Score</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Users</th>
                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resume</th>
               </tr>
             </thead>
@@ -45,7 +45,7 @@
                         {{ session.status }}
                     </span>
                 </td>
-                <td class="px-4 py-2 whitespace-nowrap text-xs font-bold text-blue-600">{{ session.total_score || 0 }}</td> <!-- Note: API returns total_score in list, but requirement says "Total Users". List API might not have user count. Using score for now or need to update API. Wait, requirement says "Change column Total Score to Total Users". I'll label it Total Users but if data is score, it's misleading. Let's assume I should show user count if available, else score. Actually, get_recent_sessions doesn't return user count. I'll stick to score for now but label it "Total Score" to be accurate, or if user insists on Total Users I need to update backend. User said "Change column... to Total users". I will check if I can get user count easily. For now, I will display total_score but label it "Total Score" to avoid confusion, or "Total Users (N/A)" if missing. Let's keep Total Score for list view as per backend data, but user asked to change it. I'll change label to "Total Score" for now as I can't get user count without N+1 query. -->
+                <td class="px-4 py-2 whitespace-nowrap text-xs font-bold text-blue-600">{{ session.total_users || 0 }}</td>
                 <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
                     <button @click.stop="resumeSession(session)" class="text-blue-600 hover:text-blue-800 font-bold" title="Resume Session">
                         ▶️
@@ -103,19 +103,19 @@
                     </div>
                     <div class="ml-auto flex gap-4 text-center">
                         <div>
-                            <div class="text-lg font-bold text-blue-600">{{ userDetails.stats.total_score || 0 }}</div>
+                            <div class="text-lg font-bold text-blue-600">{{ userDetails.stats.grand_total_score || 0 }}</div>
                             <div class="text-xs text-gray-500 uppercase">Score</div>
                         </div>
                         <div>
-                            <div class="text-lg font-bold text-green-600">{{ userDetails.stats.total_comments || 0 }}</div>
+                            <div class="text-lg font-bold text-green-600">{{ userDetails.stats.grand_total_comments || 0 }}</div>
                             <div class="text-xs text-gray-500 uppercase">Comments</div>
                         </div>
                          <div>
-                            <div class="text-lg font-bold text-pink-600">{{ userDetails.stats.total_likes || 0 }}</div>
+                            <div class="text-lg font-bold text-pink-600">{{ userDetails.stats.grand_total_likes || 0 }}</div>
                             <div class="text-xs text-gray-500 uppercase">Likes</div>
                         </div>
                          <div>
-                            <div class="text-lg font-bold text-purple-600">{{ userDetails.stats.total_gifts || 0 }}</div>
+                            <div class="text-lg font-bold text-purple-600">{{ userDetails.stats.grand_total_gifts || 0 }}</div>
                             <div class="text-xs text-gray-500 uppercase">Gifts</div>
                         </div>
                     </div>
@@ -125,8 +125,8 @@
                  <div v-if="userDetails.gifts_breakdown && Object.keys(userDetails.gifts_breakdown).length > 0" class="mb-4">
                     <h4 class="text-sm font-bold text-gray-700 mb-2">🎁 Gift Breakdown</h4>
                     <div class="flex flex-wrap gap-2">
-                        <div v-for="(count, name) in userDetails.gifts_breakdown" :key="name" class="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs border border-purple-100">
-                            {{ name }}: x{{ count }}
+                        <div v-for="(gift, name) in userDetails.gifts_breakdown" :key="name" class="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs border border-purple-100">
+                            {{ name }} ({{ gift.diamond_count }} Coins) x{{ gift.count }}
                         </div>
                     </div>
                 </div>

@@ -30,6 +30,7 @@ class GameManager:
         self.is_scoring_active = False
         self.current_question = None
         self.recent_logs = []  # Store recent logs for WebSocket
+        self.log_counter = 0
         self.adapter_task = None
         self.adapter = None
 
@@ -47,7 +48,9 @@ class GameManager:
 
     def add_log(self, level: str, message: str, log_type: str = "System"):
         """Add a log entry to be broadcasted via WebSocket"""
+        self.log_counter += 1
         log_entry = {
+            "id": self.log_counter,
             "time": datetime.now().strftime("%H:%M:%S"),
             "level": level,
             "type": log_type,
@@ -58,11 +61,12 @@ class GameManager:
         if len(self.recent_logs) > 50:
             self.recent_logs.pop(0)
 
-    def get_and_clear_logs(self):
-        """Get recent logs and clear them (for WebSocket consumption)"""
-        logs = self.recent_logs[:]
-        self.recent_logs = []
-        return logs
+    def get_logs(self, after_id: int = 0):
+        """Get logs newer than after_id (for WebSocket consumption)"""
+        if after_id == 0:
+            return self.recent_logs[:]
+
+        return [log for log in self.recent_logs if log["id"] > after_id]
 
     async def set_current_question(
         self,
@@ -360,19 +364,27 @@ class GameManager:
                     .limit(20)
                 )
                 sessions = result.scalars().all()
-                return [
-                    {
-                        "id": s.id,
-                        "channel_name": s.channel_name,
-                        "start_time": (
-                            s.start_time.isoformat() if s.start_time else None
-                        ),
-                        "end_time": s.end_time.isoformat() if s.end_time else None,
-                        "status": s.status,
-                        "total_score": s.total_score,
-                    }
-                    for s in sessions
-                ]
+
+                session_list = []
+                for s in sessions:
+                    # Get user count from Redis Leaderboard
+                    leaderboard_key = f"session:{s.id}:leaderboard"
+                    user_count = self.redis.zcard(leaderboard_key) or 0
+
+                    session_list.append(
+                        {
+                            "id": s.id,
+                            "channel_name": s.channel_name,
+                            "start_time": (
+                                s.start_time.isoformat() if s.start_time else None
+                            ),
+                            "end_time": s.end_time.isoformat() if s.end_time else None,
+                            "status": s.status,
+                            "total_score": s.total_score,
+                            "total_users": user_count,
+                        }
+                    )
+                return session_list
         except Exception as e:
             print(f"Error fetching recent sessions: {e}")
             return []
